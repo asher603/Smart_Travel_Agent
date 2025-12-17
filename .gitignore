@@ -247,3 +247,27 @@ secrets.json
 *.pth
 models/
 cache/
+
+
+# ----------------------------------------
+# Extra Additions for MongoDB & Docker
+# ----------------------------------------
+
+# 7. MongoDB Dump/Restore
+# If you ever run 'mongodump' to backup your cloud DB, it creates this folder.
+dump/
+*.bson
+*.gzip
+
+# 8. Local Environment Variants
+# Just in case you create .env.local, .env.test, etc.
+.env.*
+!.env.example
+
+# 9. Docker Local Overrides
+# If you add Docker later, this file is used for local config (ports/volumes) 
+# and should not be uploaded.
+docker-compose.override.yml
+
+# 10. Jupyter Notebook Checkpoints (If you use them for testing AI)
+.ipynb_checkpoints/

@@ -2,21 +2,23 @@ import requests
 
 class APIService:
     def __init__(self):
+        # כתובת השרת המקומי שלך
         self.base_url = "http://127.0.0.1:8000"
 
-    def check_connection(self):
-        try:
-            response = requests.get(f"{self.base_url}/")
-            if response.status_code == 200:
-                return response.json()
-        except Exception as e:
-            return {"error": str(e)}
-        return {"error": "Failed to connect"}
-
     def get_trip_plan(self, destination):
+        """
+        שולח בקשה לשרת ומחזיר את תשובת ה-JSON
+        """
         try:
-            response = requests.get(f"{self.base_url}/generate_trip/{destination}")
+            url = f"{self.base_url}/generate_trip/{destination}"
+            response = requests.get(url)
+            
             if response.status_code == 200:
                 return response.json()
+            else:
+                return {"error": f"Server returned status: {response.status_code}"}
+                
+        except requests.exceptions.ConnectionError:
+            return {"error": "Connection failed. Is the server running?"}
         except Exception as e:
             return {"error": str(e)}
