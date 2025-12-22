@@ -4,6 +4,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 
 # --- Path Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -40,12 +41,16 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
+# המודל המעודכן - תואם לדשבורד החדש
 class TripRequest(BaseModel):
     username: str
     destination: str
+    origin: str          # <--- חדש
+    stops: Optional[str] = "" # <--- חדש (אופציונלי)
     budget: int
+    currency: str        # <--- חדש
     interest: str
-    days: int  # <--- Added Field
+    duration: int        # שיניתי ל-duration כדי שיהיה אחיד, שים לב שבקוד הישן זה היה days
 
 # --- Endpoints ---
 
@@ -56,49 +61,51 @@ async def login(req: LoginRequest):
 
 @app.post("/generate_trip")
 async def generate_trip(req: TripRequest):
-    print(f"🚀 Request: {req.destination}, {req.days} days, Budget: ${req.budget}")
+    print(f"🚀 Request: {req.origin} -> {req.destination} ({req.duration} days)")
 
     try:
         # 1. Log Request
         db.log_event("TripRequested", req.dict())
 
-        # 2. Build Prompt (Enforcing structure for UI parsing)
-        prompt = (
-            f"Plan a {req.days}-day trip to {req.destination}. "
-            f"Budget: ${req.budget}. Interest: {req.interest}. "
-            f"IMPORTANT: Use '**Day 1:**', '**Day 2:**' format for each day."
-        )
-
-        # 3. Call AI
+        # 2. Call AI Agent
         if agent:
-            response_text = agent.generate_response(prompt)
-            if isinstance(response_text, dict):
-                itinerary = response_text.get('trip_plan', str(response_text))
-            else:
-                itinerary = str(response_text)
+            # אנו שולחים את המשתנים הנפרדים ל-AI, והוא בונה את הפרומפט
+            response_data = agent.generate_response(
+                destination=req.destination,
+                origin=req.origin,
+                stops=req.stops,
+                duration=req.duration,
+                budget=req.budget,
+                currency=req.currency,
+                interest=req.interest
+            )
+            
+            # אם ה-AI החזיר שגיאה פנימית
+            if "error" in response_data:
+                raise HTTPException(status_code=500, detail=response_data["error"])
+                
+            trip_plan = response_data.get("trip_plan", {})
+            
         else:
-            # Mock Data if AI is off
-            itinerary = ""
-            for i in range(1, req.days + 1):
-                itinerary += f"**Day {i}:** Explore {req.destination}.\n* Morning: Visit landmark.\n* Lunch: Local food.\n\n"
+            # Mock Data (גיבוי למקרה שה-AI לא עובד)
+            trip_plan = {
+                "summary": "Mock trip summary.", 
+                "budget_breakdown": {"Food": 50, "Hotel": 50},
+                "itinerary": []
+            }
 
-        # 4. Result
+        # 3. Result Structure
         result = {
-            "destination": req.destination,
-            "days": req.days,
-            "budget": req.budget,
-            "weather": "Sunny 25°C",  # You can hook up a real Weather API later
-            "itinerary": itinerary,
-            "username": req.username
+            "trip_plan": trip_plan # הלקוח מצפה לזה במבנה הזה
         }
 
-        # 5. Log Success
-        db.log_event("TripGenerated", result)
+        # 4. Log Success
+        db.log_event("TripGenerated", {"user": req.username, "dest": req.destination})
         
         return result
 
     except Exception as e:
-        db.log_event("ErrorOccurred", {"error": str(e), "dest": req.destination})
+        db.log_event("ErrorOccurred", {"error": str(e)})
         print(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
