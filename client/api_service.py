@@ -7,7 +7,8 @@ class APIService:
     def login(self, username, password):
         try:
             payload = {"username": username, "password": password}
-            response = requests.post(f"{self.base_url}/login", json=payload, timeout=10)
+            # הגדלנו את ה-timeout ל-30 שניות ליתר ביטחון
+            response = requests.post(f"{self.base_url}/login", json=payload, timeout=30)
             return response.json()
         except Exception as e:
             return {"error": f"Login Error: {str(e)}"}
@@ -24,9 +25,7 @@ class APIService:
                 "interest": interest,
                 "duration": days
             }
-            
-            # --- השינוי כאן: timeout=600 ---
-            # נותנים לו 10 דקות לחשוב לפני שמתייאשים
+            # כאן נשאר 600 (10 דקות) כי ג'מיני לוקח זמן
             response = requests.post(f"{self.base_url}/generate_trip", json=payload, timeout=600)
             
             if response.status_code == 200:
@@ -38,9 +37,10 @@ class APIService:
 
     def get_history(self, username):
         try:
-            response = requests.get(f"{self.base_url}/history/{username}", timeout=10)
+            # גם כאן נגדיל ל-30
+            response = requests.get(f"{self.base_url}/history/{username}", timeout=30)
             if response.status_code == 200:
                 return response.json()
             return []
         except Exception as e:
-            return []
+            return [] 
