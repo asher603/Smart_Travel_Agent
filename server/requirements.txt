@@ -1,7 +1,14 @@
 fastapi
 uvicorn
-sqlalchemy
-pydantic
-python-dotenv
+requests
 pymongo
+python-dotenv
 certifi
+bcrypt
+# --- AI & LangChain ---
+langchain
+langchain-groq
+langchain-community
+duckduckgo-search
+# --- File Uploads (חובה עבור הקלטת שמע) ---
+python-multipart

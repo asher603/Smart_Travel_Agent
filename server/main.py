@@ -1,29 +1,32 @@
 import sys
 import os
 import uvicorn
-from fastapi import FastAPI, HTTPException
+import requests
+from fastapi import FastAPI, HTTPException, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
+from dotenv import load_dotenv, find_dotenv
+
+# טעינת הטוקן
+load_dotenv(find_dotenv())
+HF_TOKEN = os.getenv("HF_TOKEN") # וודא שהוספת את זה ל-.env
 
 # --- Path Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-# Import Database
 import server.database as db
 
-# Try importing the AI agent
 try:
     from ai_agent.agent_core import TravelAgent
     agent = TravelAgent()
     print("✅ AI Agent loaded successfully.")
-except ImportError:
+except ImportError as e:
     agent = None
-    print("⚠️ Warning: 'ai_agent' module not found. Using Mock mode.")
+    print(f"⚠️ Warning: 'ai_agent' module not found. Error: {e}")
 
 app = FastAPI(title="Smart Travel Agent API")
 
-# --- CORS ---
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -41,35 +44,88 @@ class LoginRequest(BaseModel):
     username: str
     password: str
 
-# המודל המעודכן - תואם לדשבורד החדש
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+
 class TripRequest(BaseModel):
     username: str
     destination: str
-    origin: str          # <--- חדש
-    stops: Optional[str] = "" # <--- חדש (אופציונלי)
+    origin: str
+    stops: Optional[str] = ""
     budget: int
-    currency: str        # <--- חדש
+    currency: str
     interest: str
-    duration: int        # שיניתי ל-duration כדי שיהיה אחיד, שים לב שבקוד הישן זה היה days
+    duration: int
 
 # --- Endpoints ---
 
+@app.post("/register")
+async def register(req: RegisterRequest):
+    success = db.create_user(req.username, req.password)
+    if success:
+        db.log_event("UserRegistered", {"username": req.username})
+        return {"status": "success", "message": "User created successfully"}
+    else:
+        raise HTTPException(status_code=400, detail="Username already exists")
+
 @app.post("/login")
 async def login(req: LoginRequest):
-    db.log_event("UserLogin", {"username": req.username})
-    return {"status": "success", "username": req.username}
+    if db.verify_user(req.username, req.password):
+        db.log_event("UserLogin", {"username": req.username})
+        return {"status": "success", "username": req.username}
+    else:
+        db.log_event("LoginFailed", {"username": req.username})
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+
+# --- Endpoint חדש: תמלול דיבור (Speech to Text) ---
+@app.post("/transcribe")
+async def transcribe_audio(file: UploadFile = File(...)):
+    """
+    מקבל קובץ אודיו, שולח למודל Whisper של Hugging Face, ומחזיר טקסט.
+    """
+    # מודל Whisper המהיר (Turbo)
+    API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo"
+    
+    headers = {}
+    if HF_TOKEN:
+        headers["Authorization"] = f"Bearer {HF_TOKEN}"
+    
+    try:
+        print(f"🎤 Receiving audio file: {file.filename}...")
+        audio_bytes = await file.read()
+        
+        # שליחה ל-Hugging Face
+        response = requests.post(API_URL, headers=headers, data=audio_bytes)
+        
+        if response.status_code == 200:
+            result = response.json()
+            text = result.get("text", "")
+            print(f"✅ Transcribed: '{text}'")
+            return {"text": text}
+        else:
+            print(f"❌ HF Error {response.status_code}: {response.text}")
+            return {"text": "", "error": "Transcription failed"}
+            
+    except Exception as e:
+        print(f"❌ Server Error: {e}")
+        return {"text": "", "error": str(e)}
 
 @app.post("/generate_trip")
 async def generate_trip(req: TripRequest):
-    print(f"🚀 Request: {req.origin} -> {req.destination} ({req.duration} days)")
+    print(f"🚀 Request: {req.origin} -> {req.destination}")
+    
+    # משתמשים בטקסט שהגיע (בין אם הוקלד או הוקלט)
+    detected_interest = req.interest.title()
+    
+    # --- אופציונלי: סיווג כוונות ---
+    # אפשר להשאיר את זה או להוריד, תלוי בך.
+    # כאן אני משאיר את זה פשוט: ה-AI יקבל את הטקסט (המוקלט או הכתוב) כמו שהוא.
 
     try:
-        # 1. Log Request
         db.log_event("TripRequested", req.dict())
 
-        # 2. Call AI Agent
         if agent:
-            # אנו שולחים את המשתנים הנפרדים ל-AI, והוא בונה את הפרומפט
             response_data = agent.generate_response(
                 destination=req.destination,
                 origin=req.origin,
@@ -77,30 +133,25 @@ async def generate_trip(req: TripRequest):
                 duration=req.duration,
                 budget=req.budget,
                 currency=req.currency,
-                interest=req.interest
+                interest=detected_interest
             )
             
-            # אם ה-AI החזיר שגיאה פנימית
             if "error" in response_data:
                 raise HTTPException(status_code=500, detail=response_data["error"])
                 
             trip_plan = response_data.get("trip_plan", {})
             
         else:
-            # Mock Data (גיבוי למקרה שה-AI לא עובד)
-            trip_plan = {
-                "summary": "Mock trip summary.", 
-                "budget_breakdown": {"Food": 50, "Hotel": 50},
-                "itinerary": []
-            }
+            trip_plan = {"summary": "Mock trip", "itinerary": []}
 
-        # 3. Result Structure
-        result = {
-            "trip_plan": trip_plan # הלקוח מצפה לזה במבנה הזה
-        }
+        trip_plan["detected_interest"] = detected_interest 
+        result = {"trip_plan": trip_plan}
 
-        # 4. Log Success
-        db.log_event("TripGenerated", {"user": req.username, "dest": req.destination})
+        db.log_event("TripGenerated", {
+            "username": req.username, 
+            "destination": req.destination,
+            "trip_plan": trip_plan
+        })
         
         return result
 

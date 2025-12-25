@@ -1,2 +1,5 @@
 PySide6
 requests
+sounddevice
+numpy
+scipy

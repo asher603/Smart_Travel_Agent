@@ -1,106 +1,91 @@
 import os
-import json
 from dotenv import load_dotenv
-from openai import OpenAI
+from langchain_groq import ChatGroq
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.output_parsers import JsonOutputParser
 from duckduckgo_search import DDGS
 
-# טעינת המפתח
 load_dotenv()
-# וודא שבקובץ .env שמת: GROQ_API_KEY=gsk_...
+
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-if not GROQ_API_KEY:
-    # גיבוי למקרה ששכחת לשנות את השם ב-.env
-    GROQ_API_KEY = os.getenv("GOOGLE_API_KEY") 
-
-if not GROQ_API_KEY or not GROQ_API_KEY.startswith("gsk_"):
-    print("❌ Error: Missing Valid Groq API Key (starts with 'gsk_')")
-    # אל תעצור, תן לו ליפול יפה בהמשך אם צריך
-    
 class TravelAgent:
     def __init__(self):
-        # חיבור לשרתים של Groq באמצעות הספרייה של OpenAI
-        self.client = OpenAI(
-            base_url="https://api.groq.com/openai/v1",
-            api_key=GROQ_API_KEY
-        )
-        # המודל הכי חזק וחינמי של Groq
-        self.model_name = "llama-3.3-70b-versatile"
-        
-        print(f"✅ Agent Initialized on Groq (Llama 3.3): {self.model_name}")
+        if not GROQ_API_KEY:
+            print("❌ Error: Missing GROQ_API_KEY in .env")
+            self.llm = None
+            return
+
+        # אתחול המודל דרך LangChain (דרישה 9 בהנחיות)
+        try:
+            self.llm = ChatGroq(
+                temperature=0,
+                model_name="llama-3.3-70b-versatile",
+                api_key=GROQ_API_KEY
+            )
+            print("✅ LangChain Agent Initialized (Llama 3.3)")
+        except Exception as e:
+            print(f"❌ LangChain Init Error: {e}")
+            self.llm = None
 
     def search_web(self, query):
-        """חיפוש עצמאי ומהיר"""
-        print(f"🔎 Llama is searching for: {query}...")
+        """חיפוש מידע משלים ברשת (טיסות/מחירים עדכניים)"""
+        print(f"🔎 Searching: {query}...")
         try:
-            # שימוש ב-DuckDuckGo ללא תלות ב-API חיצוני
-            results = DDGS().text(query, max_results=3)
-            if not results: return "No data found."
+            results = DDGS().text(query, max_results=2)
+            if not results: return "No specific data found."
             return "\n".join([f"- {r['title']}: {r['body']}" for r in results])
         except Exception as e:
-            print(f"Search Error: {e}")
-            return "Search failed."
+            print(f"Search warning: {e}")
+            return "Search unavailable."
 
     def generate_response(self, destination, origin, stops, duration, budget, currency, interest):
-        print(f"🤖 Llama 3.3 is planning trip to {destination}...")
-
-        # 1. הבאת מידע מהאינטרנט (RAG)
-        flight_info = self.search_web(f"flights from {origin} to {destination} price {currency}")
-        hotel_info = self.search_web(f"hotels in {destination} under {budget} {currency}")
-        activity_info = self.search_web(f"top {interest} things to do in {destination}")
-
-        # 2. הרכבת הפרומפט
-        prompt = f"""
-        Act as an expert travel agent. Plan a {duration}-day trip from {origin} to {destination}.
+        print(f"🤖 LangChain is planning trip to {destination} based on interest: {interest}...")
         
-        **Constraints:**
-        - Budget: {budget} {currency}
-        - Interest: {interest}
-        - Stops: {stops}
+        if not self.llm:
+            return {"error": "LLM not initialized"}
 
-        **Real-Time Data (Use this for accuracy):**
-        - Flights: {flight_info}
-        - Hotels: {hotel_info}
-        - Activities: {activity_info}
-
-        **Instructions:**
-        1. Build a detailed itinerary.
-        2. Output ONLY valid JSON.
+        # 1. איסוף מידע (RAG)
+        flight_info = self.search_web(f"flights from {origin} to {destination} price")
         
-        **JSON Structure:**
-        {{
-            "summary": "Trip summary...",
-            "budget_breakdown": {{
-                "Flights": int, "Accommodation": int, "Food": int, "Activities": int, "Transport": int
-            }},
-            "itinerary": [
-                {{ "day": 1, "title": "...", "activities": ["Morning...", "Afternoon...", "Evening..."] }}
-            ]
-        }}
-        """
+        # 2. הגדרת הפרומפט
+        # שים לב: אנחנו מזריקים את ה-interest (שיכול להיות קטגוריה מ-HF או טקסט חופשי)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are an expert travel agent. You MUST output ONLY valid JSON."),
+            ("user", """
+             Plan a {duration}-day trip from {origin} to {destination}.
+             Budget: {budget} {currency}.
+             User Interest/Vibe: {interest} (Strictly tailor the trip to this vibe!).
+             
+             Real-time Flight Data: {flight_info}
+             
+             Return JSON with this exact structure:
+             {{
+                "summary": "A short summary of the trip highlighting the selected vibe",
+                "budget_breakdown": {{ "Flights": int, "Accommodation": int, "Food": int, "Activities": int, "Transport": int }},
+                "itinerary": [ 
+                    {{ "day": 1, "title": "Day Title", "activities": ["Activity 1", "Activity 2"] }} 
+                ]
+             }}
+             """)
+        ])
 
+        # 3. הרצת השרשרת (Chain)
         try:
-            # שליחה ל-Groq עם בקשה ל-JSON
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=[
-                    {"role": "system", "content": "You are a helpful travel assistant that outputs JSON only."},
-                    {"role": "user", "content": prompt}
-                ],
-                response_format={"type": "json_object"} # מבטיח JSON תקין
-            )
+            chain = prompt | self.llm | JsonOutputParser()
             
-            content = response.choices[0].message.content
-            data = json.loads(content)
-            return {"trip_plan": data}
+            response_data = chain.invoke({
+                "duration": duration,
+                "origin": origin,
+                "destination": destination,
+                "budget": budget,
+                "currency": currency,
+                "interest": interest,
+                "flight_info": flight_info
+            })
+            
+            return {"trip_plan": response_data}
 
         except Exception as e:
-            print(f"Groq Error: {e}")
-            return {
-                "trip_plan": {
-                    "summary": f"Error: {str(e)}",
-                    "budget_breakdown": {"Error": 100},
-                    "itinerary": []
-                },
-                "error": str(e)
-            }
+            print(f"LangChain Error: {e}")
+            return {"error": str(e), "trip_plan": {}}
