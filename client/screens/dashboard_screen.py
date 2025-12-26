@@ -43,7 +43,7 @@ STYLESHEET = """
     QLabel#InputLabel { font-size: 14px; font-weight: 600; color: #546e7a; margin-top: 5px; }
 
     /* --- Text Fields --- */
-    QLineEdit, QPlainTextEdit { 
+    QLineEdit, QPlainTextEdit, QTextEdit { 
         background-color: #ffffff;
         color: #333333;
         border: 1px solid #cfd8dc;
@@ -51,7 +51,7 @@ STYLESHEET = """
         padding: 8px 10px;
         font-size: 14px;
     }
-    QLineEdit:focus, QPlainTextEdit:focus { border: 2px solid #2196f3; }
+    QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 2px solid #2196f3; }
 
     /* --- Spin Boxes --- */
     QSpinBox {
@@ -356,7 +356,8 @@ class DashboardScreen(QWidget):
         # Chat History
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
-        self.chat_display.setStyleSheet("border: none; background: #fafafa; font-size: 14px;")
+        # FIXED: Added color explicitly
+        self.chat_display.setStyleSheet("border: none; background: #fafafa; font-size: 14px; color: #333333;")
         l.addWidget(self.chat_display)
         
         # Chat Input Area
@@ -391,6 +392,8 @@ class DashboardScreen(QWidget):
         
         self.res_scroll = QScrollArea()
         self.res_scroll.setWidgetResizable(True)
+        # FIXED: Force horizontal scrollbar off to ensure content resizes/wraps dynamically
+        self.res_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.res_scroll.setStyleSheet("""
             QScrollArea { border: 1px solid #e0e0e0; border-radius: 12px; background-color: #f8f9fa; }
             QWidget#ResContent { background-color: #f8f9fa; }
