@@ -12,14 +12,16 @@ except ImportError:
     AUDIO_AVAILABLE = False
     print("⚠️ sounddevice not installed. Mic feature disabled.")
 
+# Added QToolTip to imports
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
                                QLineEdit, QSpinBox, QComboBox, 
-                               QScrollArea, QMessageBox, QFrame, QSplitter)
+                               QScrollArea, QMessageBox, QFrame, QSplitter, QToolTip)
 from PySide6.QtCore import Qt, QThread, Signal
-from PySide6.QtGui import QPainter, QFont
+# Added QCursor to imports
+from PySide6.QtGui import QPainter, QFont, QColor, QCursor
 
 try:
-    from PySide6.QtCharts import QChart, QChartView, QPieSeries
+    from PySide6.QtCharts import QChart, QChartView, QPieSeries, QPieSlice
     CHARTS_AVAILABLE = True
 except ImportError:
     CHARTS_AVAILABLE = False
@@ -303,6 +305,14 @@ class DashboardScreen(QWidget):
             w = self.res_l.itemAt(i).widget()
             if w: w.setParent(None)
 
+    # --- Tooltip Handler ---
+    def on_slice_hover(self, state, slice_obj):
+        if state:
+            # Show tooltip with label (which now contains value/%)
+            QToolTip.showText(QCursor.pos(), slice_obj.label())
+        else:
+            QToolTip.hideText()
+
     def show_res(self, data):
         self.btn_go.setText("✨ Generate Trip")
         self.btn_go.setEnabled(True)
@@ -338,17 +348,49 @@ class DashboardScreen(QWidget):
             cl = QVBoxLayout(cc)
             
             s = QPieSeries()
-            for k,v in tp["budget_breakdown"].items(): s.append(k,v)
+            
+            # Colors List
+            colors = [
+                QColor("#42A5F5"), QColor("#66BB6A"), QColor("#FFA726"), QColor("#EF5350"), 
+                QColor("#AB47BC"), QColor("#26C6DA"), QColor("#FF7043"), QColor("#8D6E63")
+            ]
+            
+            # 1. Calculate Total for Percentages
+            total_budget = sum(tp["budget_breakdown"].values())
+            
+            i = 0
+            for k,v in tp["budget_breakdown"].items(): 
+                slice_obj = s.append(k,v)
+                slice_obj.setColor(colors[i % len(colors)])
+                
+                # 2. Calculate Percentage
+                pct = (v / total_budget) * 100 if total_budget > 0 else 0
+                
+                # 3. Update Label with Value & Percentage
+                # This label appears in the Legend AND on the slice (if visible)
+                slice_obj.setLabel(f"{k}: ${v} ({pct:.1f}%)")
+                
+                # 4. Show label on slice ONLY if percentage > 5% (Prevent Overlap)
+                if pct > 5:
+                    slice_obj.setLabelVisible(True)
+                else:
+                    slice_obj.setLabelVisible(False)
+                    
+                # 5. Connect Hover Signal for Tooltip
+                slice_obj.hovered.connect(lambda state, slc=slice_obj: self.on_slice_hover(state, slc))
+                
+                i += 1
+            
             if s.slices(): 
                 s.slices()[0].setExploded(True)
-                s.slices()[0].setLabelVisible(True)
                 
             ch = QChart()
             ch.addSeries(s)
             ch.setTitle("Budget Breakdown")
             ch.setAnimationOptions(QChart.SeriesAnimations)
-            ch.setTheme(QChart.ChartThemeBlueCerulean)
+            ch.setTheme(QChart.ChartThemeLight) # Use Light theme so custom colors aren't overridden
             ch.legend().setAlignment(Qt.AlignBottom)
+            ch.legend().setFont(QFont("Arial", 10))
             
             cv = QChartView(ch)
             cv.setRenderHint(QPainter.Antialiasing)
