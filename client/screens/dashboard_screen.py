@@ -1,25 +1,11 @@
 import json
-import os
-import requests
-import tempfile
-import scipy.io.wavfile as wav
-
-# בדיקה אם יש ספריית הקלטה
-try:
-    import sounddevice as sd
-    AUDIO_AVAILABLE = True
-except ImportError:
-    AUDIO_AVAILABLE = False
-    print("⚠️ sounddevice not installed. Mic feature disabled.")
-
-# Added QToolTip, QStackedWidget, QTextEdit, QPlainTextEdit to imports
+import base64
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
                                QLineEdit, QSpinBox, QComboBox, 
                                QScrollArea, QMessageBox, QFrame, QSplitter, QToolTip,
-                               QStackedWidget, QTextEdit, QPlainTextEdit)
-from PySide6.QtCore import Qt, QThread, Signal, QSize
-# Added QCursor to imports
-from PySide6.QtGui import QPainter, QFont, QColor, QCursor
+                               QStackedWidget, QTextEdit, QPlainTextEdit, QTabWidget)
+from PySide6.QtCore import Qt, QThread, Signal, QSize, QByteArray
+from PySide6.QtGui import QPainter, QFont, QColor, QCursor, QPixmap, QImage
 
 try:
     from PySide6.QtCharts import QChart, QChartView, QPieSeries, QPieSlice
@@ -30,139 +16,85 @@ except ImportError:
 from client.components.custom_widgets import Card
 from client.logic.workers import TripWorker
 
-# --- Central Stylesheet (Re-introduced to ensure buttons and inputs look correct) ---
+# --- Central Stylesheet ---
 STYLESHEET = """
-    /* --- Basic Settings --- */
     QMainWindow { background-color: #f0f2f5; }
     QWidget { font-family: 'Segoe UI', Arial, sans-serif; }
     
-    /* --- Text & Headers --- */
     QLabel { color: #263238; }
     QLabel#Header { font-size: 26px; font-weight: 900; color: #1565c0; }
     QLabel#SectionTitle { font-size: 18px; font-weight: bold; color: #37474f; margin-bottom: 5px; }
     QLabel#InputLabel { font-size: 14px; font-weight: 600; color: #546e7a; margin-top: 5px; }
 
-    /* --- Text Fields --- */
-    QLineEdit, QPlainTextEdit, QTextEdit { 
-        background-color: #ffffff;
-        color: #333333;
-        border: 1px solid #cfd8dc;
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 14px;
+    QLineEdit, QPlainTextEdit, QTextEdit, QSpinBox, QComboBox { 
+        background-color: #ffffff; color: #333333; border: 1px solid #cfd8dc; border-radius: 6px; padding: 8px 10px; font-size: 14px;
     }
-    QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus { border: 2px solid #2196f3; }
+    QLineEdit:focus, QPlainTextEdit:focus, QTextEdit:focus, QSpinBox:focus, QComboBox:focus { border: 2px solid #2196f3; }
 
-    /* --- Spin Boxes --- */
-    QSpinBox {
-        background-color: #ffffff;
-        color: #333333;
-        border: 1px solid #cfd8dc;
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 14px;
-        min-height: 25px;
-    }
-    QSpinBox:focus { border: 2px solid #2196f3; }
-
-    QSpinBox::up-button, QSpinBox::down-button {
-        width: 20px; 
-        background-color: #eceff1;
-        border-left: 1px solid #cfd8dc;
-    }
-    QSpinBox::up-button:hover, QSpinBox::down-button:hover { background-color: #cfd8dc; }
-
-    /* --- ComboBox --- */
-    QComboBox {
-        background-color: #ffffff;
-        color: #333333;
-        border: 1px solid #cfd8dc;
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 14px;
-        min-height: 25px;
-    }
-    QComboBox:focus { border: 2px solid #2196f3; }
-    QComboBox QAbstractItemView {
-        background-color: #ffffff;
-        color: #333333;
-        selection-background-color: #2196f3;
-        selection-color: #ffffff;
-    }
-
-    /* --- Buttons --- */
     QPushButton#PrimaryBtn {
-        background-color: #1565c0;
-        color: white;
-        border: none;
-        border-radius: 8px;
-        padding: 12px;
-        font-weight: bold;
-        font-size: 16px;
+        background-color: #1565c0; color: white; border: none; border-radius: 8px; padding: 12px; font-weight: bold; font-size: 16px;
     }
     QPushButton#PrimaryBtn:hover { background-color: #0d47a1; }
-    QPushButton#PrimaryBtn:pressed { background-color: #002171; }
     QPushButton#PrimaryBtn:disabled { background-color: #b0bec5; color: #eceff1; }
 
     QPushButton#SecondaryBtn {
-        background-color: white;
-        color: #455a64;
-        border: 1px solid #b0bec5;
-        border-radius: 6px;
-        padding: 6px 12px;
-        font-weight: 600;
+        background-color: white; color: #455a64; border: 1px solid #b0bec5; border-radius: 6px; padding: 6px 12px; font-weight: 600;
     }
     QPushButton#SecondaryBtn:hover { background-color: #f5f5f5; border: 1px solid #78909c; }
     
-    /* --- Card --- */
-    QFrame#Card {
-        background-color: white;
-        border-radius: 12px;
-        border: 1px solid #e0e0e0;
+    QFrame#Card { background-color: white; border-radius: 12px; border: 1px solid #e0e0e0; }
+
+    /* --- Tabs Styling --- */
+    QTabWidget::pane { 
+        border: 1px solid #e0e0e0; 
+        background: #f8f9fa; 
+        border-radius: 8px;
+    }
+    QTabBar::tab {
+        background: #eceff1;
+        border: 1px solid #cfd8dc;
+        padding: 8px 16px;
+        margin-right: 4px;
+        border-top-left-radius: 6px;
+        border-top-right-radius: 6px;
+        font-weight: bold;
+        color: #546e7a;
+    }
+    QTabBar::tab:selected {
+        background: #ffffff;
+        border-bottom-color: #ffffff;
+        color: #1565c0;
+        border-top: 2px solid #1565c0;
+    }
+    QTabBar::tab:hover {
+        background: #ffffff;
     }
 """
 
-# --- Worker להקלטת סאונד (רץ ברקע) ---
-class AudioRecorderWorker(QThread):
-    finished_signal = Signal(str) # מחזיר את הטקסט המתומלל מהשרת
+# --- Worker לתמונה ---
+class ImageWorker(QThread):
+    finished_signal = Signal(str) 
     
-    def __init__(self, api_url):
+    def __init__(self, api, destination, interest):
         super().__init__()
-        self.api_url = api_url
+        self.api = api
+        self.destination = destination
+        self.interest = interest
 
     def run(self):
-        if not AUDIO_AVAILABLE: return
-
         try:
-            duration = 5  # שניות הקלטה
-            fs = 44100    # תדר דגימה
+            response = self.api.post("/generate_image", {
+                "destination": self.destination,
+                "interest": self.interest
+            })
             
-            print("🎙️ Recording started...")
-            # הקלטה בפועל (חוסמת את ה-Thread הזה אבל לא את הממשק)
-            recording = sd.rec(int(duration * fs), samplerate=fs, channels=1, dtype='int16')
-            sd.wait() 
-            print("⏹️ Recording finished.")
-            
-            # שמירה לקובץ WAV זמני
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
-                wav.write(tmp.name, fs, recording)
-                tmp_path = tmp.name
-            
-            # שליחה לשרת (Hugging Face Whisper)
-            with open(tmp_path, 'rb') as f:
-                response = requests.post(f"{self.api_url}/transcribe", files={"file": f}, timeout=30)
-            
-            os.remove(tmp_path) # ניקוי
-            
-            if response.status_code == 200:
-                text = response.json().get("text", "")
-                self.finished_signal.emit(text)
+            if response and "image_base64" in response:
+                self.finished_signal.emit(response["image_base64"])
             else:
-                self.finished_signal.emit(f"Error: Server failed ({response.status_code})")
-                
+                self.finished_signal.emit(None)
         except Exception as e:
-            print(f"Audio Error: {e}")
-            self.finished_signal.emit(f"Error: {str(e)}")
+            print(f"Image Worker Error: {e}")
+            self.finished_signal.emit(None)
 
 
 class DashboardScreen(QWidget):
@@ -171,7 +103,6 @@ class DashboardScreen(QWidget):
         self.switch_cb, self.api = switch_cb, api
         self.curr_user = None
         
-        # Apply Stylesheet
         self.setStyleSheet(STYLESHEET)
         
         main = QVBoxLayout(self)
@@ -220,22 +151,19 @@ class DashboardScreen(QWidget):
         
         main.addWidget(self.splitter)
         
-        # State for chat/refinement
         self.current_trip_context = "" 
+        self.trip_counter = 0
 
     def create_input_panel(self):
         layout = QVBoxLayout(self.left_panel)
         layout.setContentsMargins(0,0,10,0)
 
-        # Use StackedWidget to switch between Form and Chat
         self.left_stack = QStackedWidget()
         
-        # Page 0: The Planning Form
         self.page_form = QWidget()
         self.setup_form_page(self.page_form)
         self.left_stack.addWidget(self.page_form)
         
-        # Page 1: The Chat Interface
         self.page_chat = QWidget()
         self.setup_chat_page(self.page_chat)
         self.left_stack.addWidget(self.page_chat)
@@ -246,7 +174,6 @@ class DashboardScreen(QWidget):
         outer = QVBoxLayout(parent_widget)
         outer.setContentsMargins(0,0,0,0)
         
-        # Scroll area for form
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("background: transparent; border: none;")
@@ -259,7 +186,6 @@ class DashboardScreen(QWidget):
 
         cl.addWidget(QLabel("Plan New Trip ✈️", objectName="SectionTitle"))
         
-        # Regular Fields
         cl.addWidget(QLabel("Origin:", objectName="InputLabel"))
         self.origin = QLineEdit()
         self.origin.setPlaceholderText("e.g. Tel Aviv")
@@ -288,29 +214,12 @@ class DashboardScreen(QWidget):
         r1.addLayout(v1)
         cl.addLayout(r1)
         
-        # --- Interest / Vibe (Multi-line) ---
+        # Interest
         cl.addWidget(QLabel("Interest / Vibe:", objectName="InputLabel"))
-        
-        mic_layout = QHBoxLayout()
         self.interest = QPlainTextEdit()
         self.interest.setPlaceholderText("e.g. 'I want relax & good food. Maybe some museums.'")
-        self.interest.setFixedHeight(70) # Fixed height, scrollable
-        
-        self.btn_mic = QPushButton("🎤")
-        self.btn_mic.setToolTip("Hold to Record (5s)")
-        self.btn_mic.setFixedSize(40, 35)
-        self.btn_mic.setCursor(Qt.PointingHandCursor)
-        self.btn_mic.setStyleSheet("""
-            QPushButton { background-color: #ef5350; color: white; border-radius: 6px; font-size: 16px; border: none; }
-            QPushButton:hover { background-color: #e53935; }
-            QPushButton:disabled { background-color: #ffcdd2; }
-        """)
-        self.btn_mic.clicked.connect(self.start_recording)
-        
-        mic_layout.addWidget(self.interest)
-        mic_layout.addWidget(self.btn_mic)
-        cl.addLayout(mic_layout)
-        # ------------------------------
+        self.interest.setFixedHeight(70) 
+        cl.addWidget(self.interest)
 
         # Budget
         cl.addWidget(QLabel("Budget:", objectName="InputLabel"))
@@ -330,8 +239,8 @@ class DashboardScreen(QWidget):
         cl.addLayout(r2)
         
         cl.addSpacing(10)
-        self.btn_go = QPushButton("✨ Generate Trip")
-        self.btn_go.setObjectName("PrimaryBtn") # Uses Stylesheet now
+        self.btn_go = QPushButton("✨ Generate Trip & Image")
+        self.btn_go.setObjectName("PrimaryBtn")
         self.btn_go.setMinimumHeight(45)
         self.btn_go.setCursor(Qt.PointingHandCursor)
         self.btn_go.clicked.connect(self.go)
@@ -342,7 +251,6 @@ class DashboardScreen(QWidget):
         outer.addWidget(scroll)
 
     def setup_chat_page(self, parent_widget):
-        # Layout for the Chat Interface (replacing the form)
         cl = QVBoxLayout(parent_widget)
         cl.setContentsMargins(0,0,0,0)
         
@@ -353,14 +261,11 @@ class DashboardScreen(QWidget):
         
         l.addWidget(QLabel("💬 Trip Assistant", objectName="SectionTitle"))
         
-        # Chat History
         self.chat_display = QTextEdit()
         self.chat_display.setReadOnly(True)
-        # FIXED: Added color explicitly
         self.chat_display.setStyleSheet("border: none; background: #fafafa; font-size: 14px; color: #333333;")
         l.addWidget(self.chat_display)
         
-        # Chat Input Area
         input_row = QHBoxLayout()
         self.chat_input = QLineEdit()
         self.chat_input.setPlaceholderText("e.g. 'Make it cheaper' or 'Add a museum'")
@@ -377,7 +282,6 @@ class DashboardScreen(QWidget):
         
         l.addSpacing(10)
         
-        # Start Over Button
         btn_reset = QPushButton("↺ Start Over")
         btn_reset.setObjectName("SecondaryBtn")
         btn_reset.setCursor(Qt.PointingHandCursor)
@@ -390,78 +294,79 @@ class DashboardScreen(QWidget):
         l = QVBoxLayout(self.right_panel)
         l.setContentsMargins(5,0,0,0)
         
-        self.res_scroll = QScrollArea()
-        self.res_scroll.setWidgetResizable(True)
-        # FIXED: Force horizontal scrollbar off to ensure content resizes/wraps dynamically
-        self.res_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        self.res_scroll.setStyleSheet("""
-            QScrollArea { border: 1px solid #e0e0e0; border-radius: 12px; background-color: #f8f9fa; }
-            QWidget#ResContent { background-color: #f8f9fa; }
-        """)
+        self.tabs = QTabWidget()
+        self.tabs.setTabsClosable(True) 
+        self.tabs.tabCloseRequested.connect(self.close_tab) 
         
-        self.res_content = QWidget()
-        self.res_content.setObjectName("ResContent")
-        self.res_l = QVBoxLayout(self.res_content)
-        self.res_l.setSpacing(20)
-        self.res_l.setContentsMargins(30,30,30,30)
+        self.welcome_tab = QWidget()
+        wl = QVBoxLayout(self.welcome_tab)
         
-        self.ph = QLabel("👈 Use the form or 🎤 Microphone\nto tell me what you want!")
-        self.ph.setAlignment(Qt.AlignCenter)
-        self.ph.setStyleSheet("color: #90a4ae; font-size: 18px; font-weight: bold;")
-        self.res_l.addWidget(self.ph)
-        self.res_l.addStretch()
+        ph = QLabel("👈 Fill the form and click Generate\nEach new plan will appear in a new tab!")
+        ph.setAlignment(Qt.AlignCenter)
+        ph.setStyleSheet("color: #90a4ae; font-size: 18px; font-weight: bold;")
+        wl.addWidget(ph)
         
-        self.res_scroll.setWidget(self.res_content)
-        l.addWidget(self.res_scroll)
+        self.tabs.addTab(self.welcome_tab, "Start Here")
+        l.addWidget(self.tabs)
 
-    def start_recording(self):
-        if not AUDIO_AVAILABLE:
-            QMessageBox.warning(self, "Error", "Audio library not found.")
-            return
+    def close_tab(self, index):
+        if self.tabs.count() > 1:
+            self.tabs.removeTab(index)
 
-        self.btn_mic.setText("⏳") # אייקון המתנה
-        self.btn_mic.setEnabled(False)
-        self.interest.setPlaceholderText("Recording... Speak now!")
+    def start_new_trip_tab(self):
+        self.trip_counter += 1
         
-        self.audio_worker = AudioRecorderWorker(self.api.base_url)
-        self.audio_worker.finished_signal.connect(self.on_recording_finished)
-        self.audio_worker.start()
-
-    def on_recording_finished(self, text):
-        self.btn_mic.setText("🎤")
-        self.btn_mic.setEnabled(True)
+        new_tab = QWidget()
+        new_layout = QVBoxLayout(new_tab)
+        new_layout.setContentsMargins(0,0,0,0)
         
-        if text.startswith("Error"):
-            QMessageBox.warning(self, "Recording Failed", text)
-            self.interest.setPlaceholderText("e.g. 'I want relax'")
-        else:
-            # For QPlainTextEdit we use setPlainText
-            self.interest.setPlainText(text.strip())
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("background-color: #f8f9fa; border: none;")
+        
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setSpacing(20)
+        content_layout.setContentsMargins(30,30,30,30)
+        
+        # הוספת הודעת טעינה בתוך הטאב החדש
+        loader_lbl = QLabel("🤖 AI is planning your trip...")
+        loader_lbl.setAlignment(Qt.AlignCenter)
+        loader_lbl.setStyleSheet("color: #1565c0; font-size: 16px;")
+        loader_lbl.setObjectName("MainLoader")
+        content_layout.addWidget(loader_lbl)
+        content_layout.addStretch()
+        
+        scroll.setWidget(content)
+        new_layout.addWidget(scroll)
+        
+        tab_index = self.tabs.addTab(new_tab, f"Trip {self.trip_counter} ⏳")
+        self.tabs.setCurrentIndex(tab_index)
+        
+        return content_layout 
 
     def go(self):
         if not self.dest.text() or not self.origin.text():
             QMessageBox.warning(self, "Missing Info", "Origin & Destination required")
             return
             
-        # Switch to Chat Interface
         self.left_stack.setCurrentIndex(1)
         self.chat_display.clear()
-        self.append_chat("System", "Generating your initial trip plan... 🤖")
+        self.append_chat("System", "Generating trip plan and visuals... 🤖🎨")
         
-        # Save initial context
         self.current_trip_context = self.interest.toPlainText()
-        
         self.btn_go.setText("Generating...")
-        self.clear_res()
         
-        # Loading message
-        lbl = QLabel("🤖 AI is planning your trip...")
-        lbl.setAlignment(Qt.AlignCenter)
-        lbl.setStyleSheet("color: #1565c0; font-size: 16px;")
-        self.res_l.addWidget(lbl)
-        self.res_l.addStretch()
+        self.start_new_trip_tab()
 
+        # 1. תכנון הטיול
         self.call_worker()
+        
+        # 2. יצירת התמונה (הראשונית)
+        self.img_worker = ImageWorker(self.api, self.dest.text(), self.interest.toPlainText())
+        self.img_worker.finished_signal.connect(self.show_trip_image)
+        self.img_worker.start()
 
     def send_chat(self):
         msg = self.chat_input.text().strip()
@@ -471,45 +376,86 @@ class DashboardScreen(QWidget):
         self.append_chat("You", msg)
         self.append_chat("System", "Refining plan... ⏳")
         
-        # Update context: Append new instruction to original interest
-        # This simulates "processing on top of original prompt"
+        self.start_new_trip_tab()
+        
+        # עדכון ההקשר עם הבקשה החדשה
         self.current_trip_context += f"\n[User Modification]: {msg}"
         
+        # 1. הפעלת ה-AI לטיול
         self.call_worker()
 
+        # 2. --- השינוי הגדול: הפעלת יצירת תמונה גם בצ'אט ---
+        # אנחנו שולחים את ה-Context המעודכן (שכולל את הבקשה החדשה שלך)
+        # כדי שהתמונה תשקף את השינויים (למשל "Add Snow")
+        self.img_worker = ImageWorker(self.api, self.dest.text(), self.current_trip_context)
+        self.img_worker.finished_signal.connect(self.show_trip_image)
+        self.img_worker.start()
+
     def call_worker(self):
-        # Common method to call worker with current state
         self.worker = TripWorker(
             self.api, self.curr_user, 
             self.dest.text(), self.origin.text(), self.stops.text(),
             self.budg.value(), self.curr.currentText(),
-            self.current_trip_context, # Uses accumulated context
+            self.current_trip_context, 
             self.days.value()
         )
         self.worker.finished_signal.connect(self.show_res)
         self.worker.start()
 
     def reset_planning(self):
-        # Wipe clean and start over
-        self.left_stack.setCurrentIndex(0) # Back to form
+        self.left_stack.setCurrentIndex(0) 
         self.chat_display.clear()
         self.current_trip_context = ""
-        self.btn_go.setText("✨ Generate Trip")
-        self.clear_res()
-        # Reset result view placeholder
-        self.res_l.addWidget(self.ph)
-        self.res_l.addStretch()
+        self.btn_go.setText("✨ Generate Trip & Image")
+        self.trip_counter = 0
+        
+        self.tabs.clear()
+        self.create_results_panel() 
 
     def append_chat(self, sender, text):
         color = "#1565c0" if sender == "System" else "#2e7d32"
         self.chat_display.append(f"<b style='color:{color}'>{sender}:</b> {text}")
 
-    def clear_res(self):
-        for i in reversed(range(self.res_l.count())):
-            w = self.res_l.itemAt(i).widget()
-            if w: w.setParent(None)
+    # --- הצגת תמונה ---
+    def show_trip_image(self, base64_str):
+        current_widget = self.tabs.currentWidget()
+        if not current_widget: return
+        
+        scroll_area = current_widget.findChild(QScrollArea)
+        if not scroll_area: return
+        
+        content_widget = scroll_area.widget()
+        layout = content_widget.layout()
 
-    # --- Tooltip Handler ---
+        # ניקוי הודעות טעינה
+        for i in reversed(range(layout.count())):
+            item = layout.itemAt(i)
+            widget = item.widget()
+            if widget and isinstance(widget, QLabel):
+                if "AI is painting" in widget.text():
+                    widget.setParent(None)
+
+        if not base64_str:
+            err = QLabel("⚠️ Image generation timed out (Server busy).")
+            err.setStyleSheet("color: #ef5350; font-style: italic; margin-bottom: 10px;")
+            layout.insertWidget(0, err)
+            return 
+
+        try:
+            img_data = base64.b64decode(base64_str)
+            image = QImage.fromData(QByteArray(img_data))
+            pixmap = QPixmap.fromImage(image)
+            
+            lbl_img = QLabel()
+            lbl_img.setPixmap(pixmap.scaledToWidth(600, Qt.SmoothTransformation))
+            lbl_img.setAlignment(Qt.AlignCenter)
+            lbl_img.setStyleSheet("border: 4px solid white; border-radius: 12px; margin-bottom: 15px; box-shadow: 0px 4px 10px rgba(0,0,0,0.1);")
+            
+            layout.insertWidget(0, lbl_img)
+        except Exception as e:
+            print(f"Error displaying image: {e}")
+
+    # --- Tooltip ---
     def on_slice_hover(self, state, slice_obj):
         if state:
             if hasattr(slice_obj, 'data_tooltip'):
@@ -518,91 +464,80 @@ class DashboardScreen(QWidget):
             QToolTip.hideText()
 
     def show_res(self, data):
-        self.btn_go.setText("✨ Generate Trip")
-        # Ensure we are on the result/chat view (mainly for first run)
-        self.clear_res()
+        self.btn_go.setText("✨ Generate Trip & Image")
         
-        # If this came from a chat update, update chat log
+        current_idx = self.tabs.currentIndex()
+        self.tabs.setTabText(current_idx, f"Trip {self.trip_counter}")
+
+        current_widget = self.tabs.currentWidget()
+        if not current_widget: return
+        scroll_area = current_widget.findChild(QScrollArea)
+        content_widget = scroll_area.widget()
+        layout = content_widget.layout()
+
+        # הסרת "AI is planning"
+        for i in reversed(range(layout.count())):
+            item = layout.itemAt(i)
+            widget = item.widget()
+            if widget and isinstance(widget, QLabel) and widget.objectName() == "MainLoader":
+                widget.setParent(None)
+
         if self.left_stack.currentIndex() == 1:
-             self.append_chat("System", "Plan updated! Check the details. ✅")
+             self.append_chat("System", "Plan updated! ✅")
         
         if "error" in data:
             err = QLabel(f"Error: {data['error']}")
             err.setStyleSheet("color: red; font-size: 16px;")
-            self.res_l.addWidget(err)
-            self.res_l.addStretch()
+            layout.addWidget(err)
+            layout.addStretch()
             return
+        
+        # הודעת טעינה לתמונה
+        img_loader = QLabel("🎨 AI is painting your scene... (approx 20s)")
+        img_loader.setStyleSheet("color: #1565c0; font-style: italic; font-weight: bold; margin-bottom: 10px;")
+        layout.insertWidget(0, img_loader)
 
         tp = data.get("trip_plan", {})
         if isinstance(tp, str): tp = json.loads(tp)
         
-        # Summary Card
         c = Card()
         l = QVBoxLayout(c)
         l.addWidget(QLabel(f"✈️ Trip to {self.dest.text()}", styleSheet="font-size: 26px; font-weight: 900; color: #1565c0;"))
-        
-        detected = tp.get("detected_interest", "")
-        if detected:
-            l.addWidget(QLabel(f"🧠 Focus: <b>{detected}</b>", styleSheet="color: #2e7d32; background: #e8f5e9; padding: 8px; border-radius: 6px; font-size: 14px; margin-top: 5px; border: 1px solid #c8e6c9;"))
-        
         l.addWidget(QLabel(tp.get("summary", ""), wordWrap=True, styleSheet="font-size: 16px; margin-top: 15px; line-height: 1.5; color: #333;"))
-        self.res_l.addWidget(c)
+        layout.addWidget(c)
         
-        # Chart
         if "budget_breakdown" in tp and CHARTS_AVAILABLE:
             cc = Card()
             cc.setMinimumHeight(400)
             cl = QVBoxLayout(cc)
-            
             s = QPieSeries()
-            colors = [
-                QColor("#42A5F5"), QColor("#66BB6A"), QColor("#FFA726"), QColor("#EF5350"), 
-                QColor("#AB47BC"), QColor("#26C6DA"), QColor("#FF7043"), QColor("#8D6E63")
-            ]
-            
+            colors = [QColor("#42A5F5"), QColor("#66BB6A"), QColor("#FFA726"), QColor("#EF5350"), QColor("#AB47BC")]
             total_budget = sum(tp["budget_breakdown"].values())
             keys_for_legend = [] 
-
             i = 0
             for k,v in tp["budget_breakdown"].items(): 
                 slice_obj = s.append(k,v)
                 slice_obj.setColor(colors[i % len(colors)])
                 keys_for_legend.append(k)
-
                 pct = (v / total_budget) * 100 if total_budget > 0 else 0
                 slice_obj.setLabel(f"${v}")
                 slice_obj.data_tooltip = f"{k}: ${v} ({pct:.1f}%)"
-                
-                if pct > 5:
-                    slice_obj.setLabelVisible(True)
-                else:
-                    slice_obj.setLabelVisible(False)
-                    
+                slice_obj.setLabelVisible(pct > 5)
                 slice_obj.hovered.connect(lambda state, slc=slice_obj: self.on_slice_hover(state, slc))
                 i += 1
-            
-            if s.slices(): 
-                s.slices()[0].setExploded(True)
-                
+            if s.slices(): s.slices()[0].setExploded(True)
             ch = QChart()
             ch.addSeries(s)
             ch.setTitle("Budget Breakdown")
-            ch.setAnimationOptions(QChart.SeriesAnimations)
-            ch.setTheme(QChart.ChartThemeLight)
-            # FORCE Bottom alignment as requested
             ch.legend().setAlignment(Qt.AlignBottom)
             ch.legend().setFont(QFont("Arial", 10))
-            
             markers = ch.legend().markers(s)
-            for marker, key in zip(markers, keys_for_legend):
-                marker.setLabel(key)
-
+            for marker, key in zip(markers, keys_for_legend): marker.setLabel(key)
             cv = QChartView(ch)
             cv.setRenderHint(QPainter.Antialiasing)
             cl.addWidget(cv)
-            self.res_l.addWidget(cc)
+            layout.addWidget(cc)
 
-        # Day Cards
         for d in tp.get("itinerary", []):
             dc = Card()
             dl = QVBoxLayout(dc)
@@ -610,9 +545,9 @@ class DashboardScreen(QWidget):
             dl.addSpacing(5)
             for a in d.get("activities", []): 
                 dl.addWidget(QLabel(f"• {a}", wordWrap=True, styleSheet="font-size: 14px; margin-bottom: 2px;"))
-            self.res_l.addWidget(dc)
+            layout.addWidget(dc)
             
-        self.res_l.addStretch()
+        layout.addStretch()
 
     def set_user(self, u):
         self.curr_user = u

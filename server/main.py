@@ -1,20 +1,22 @@
 import sys
 import os
 import uvicorn
-import requests
-from fastapi import FastAPI, HTTPException, UploadFile, File
+import base64
+from io import BytesIO
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
 from dotenv import load_dotenv, find_dotenv
 
+# --- הייבוא החדש והחשוב ---
+from huggingface_hub import InferenceClient
+
 # טעינת הטוקן
 load_dotenv(find_dotenv())
-HF_TOKEN = os.getenv("HF_TOKEN") # וודא שהוספת את זה ל-.env
+HF_TOKEN = os.getenv("HF_TOKEN")
 
-# --- Path Setup ---
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-
 import server.database as db
 
 try:
@@ -58,16 +60,18 @@ class TripRequest(BaseModel):
     interest: str
     duration: int
 
+class ImageRequest(BaseModel):
+    destination: str
+    interest: str
+
 # --- Endpoints ---
 
 @app.post("/register")
 async def register(req: RegisterRequest):
-    success = db.create_user(req.username, req.password)
-    if success:
+    if db.create_user(req.username, req.password):
         db.log_event("UserRegistered", {"username": req.username})
         return {"status": "success", "message": "User created successfully"}
-    else:
-        raise HTTPException(status_code=400, detail="Username already exists")
+    raise HTTPException(status_code=400, detail="Username already exists")
 
 @app.post("/login")
 async def login(req: LoginRequest):
@@ -78,49 +82,11 @@ async def login(req: LoginRequest):
         db.log_event("LoginFailed", {"username": req.username})
         raise HTTPException(status_code=401, detail="Invalid username or password")
 
-# --- Endpoint חדש: תמלול דיבור (Speech to Text) ---
-@app.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)):
-    """
-    מקבל קובץ אודיו, שולח למודל Whisper של Hugging Face, ומחזיר טקסט.
-    """
-    # מודל Whisper המהיר (Turbo)
-    API_URL = "https://api-inference.huggingface.co/models/openai/whisper-large-v3-turbo"
-    
-    headers = {}
-    if HF_TOKEN:
-        headers["Authorization"] = f"Bearer {HF_TOKEN}"
-    
-    try:
-        print(f"🎤 Receiving audio file: {file.filename}...")
-        audio_bytes = await file.read()
-        
-        # שליחה ל-Hugging Face
-        response = requests.post(API_URL, headers=headers, data=audio_bytes)
-        
-        if response.status_code == 200:
-            result = response.json()
-            text = result.get("text", "")
-            print(f"✅ Transcribed: '{text}'")
-            return {"text": text}
-        else:
-            print(f"❌ HF Error {response.status_code}: {response.text}")
-            return {"text": "", "error": "Transcription failed"}
-            
-    except Exception as e:
-        print(f"❌ Server Error: {e}")
-        return {"text": "", "error": str(e)}
-
 @app.post("/generate_trip")
 async def generate_trip(req: TripRequest):
-    print(f"🚀 Request: {req.origin} -> {req.destination}")
+    print(f"🚀 Generating Trip: {req.origin} -> {req.destination}")
     
-    # משתמשים בטקסט שהגיע (בין אם הוקלד או הוקלט)
     detected_interest = req.interest.title()
-    
-    # --- אופציונלי: סיווג כוונות ---
-    # אפשר להשאיר את זה או להוריד, תלוי בך.
-    # כאן אני משאיר את זה פשוט: ה-AI יקבל את הטקסט (המוקלט או הכתוב) כמו שהוא.
 
     try:
         db.log_event("TripRequested", req.dict())
@@ -140,7 +106,6 @@ async def generate_trip(req: TripRequest):
                 raise HTTPException(status_code=500, detail=response_data["error"])
                 
             trip_plan = response_data.get("trip_plan", {})
-            
         else:
             trip_plan = {"summary": "Mock trip", "itinerary": []}
 
@@ -159,6 +124,43 @@ async def generate_trip(req: TripRequest):
         db.log_event("ErrorOccurred", {"error": str(e)})
         print(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/generate_image")
+async def generate_image(req: ImageRequest):
+    """
+    יצירת תמונה באמצעות המודל החדש FLUX.1-schnell והספרייה הרשמית.
+    """
+    print(f"🎨 Generating Image for: {req.destination} ({req.interest})")
+    
+    # Prompt קצר ומדויק יותר ל-FLUX
+    image_prompt = f"travel poster of {req.destination}"
+    if req.interest:
+        image_prompt += f", {req.interest} theme"
+    image_prompt += ", cinematic, 8k, vibrant."
+    
+    try:
+        # --- השיטה החדשה והרשמית לפי התיעוד ---
+        client = InferenceClient(api_key=HF_TOKEN)
+        
+        # קריאה למודל FLUX דרך ה-Client
+        # זה מחזיר אובייקט תמונה של PIL (Python Imaging Library)
+        image = client.text_to_image(
+            prompt=image_prompt,
+            model="black-forest-labs/FLUX.1-schnell"
+        )
+        
+        # המרה מ-PIL Image ל-Base64 String כדי לשלוח ללקוח
+        buffered = BytesIO()
+        image.save(buffered, format="PNG")
+        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        
+        print("✅ Image generated successfully via FLUX!")
+        return {"image_base64": img_str}
+
+    except Exception as e:
+        print(f"❌ HF Inference Error: {e}")
+        # במקרה חירום: נסה מודל גיבוי קל יותר אם FLUX עמוס
+        return {"image_base64": None}
 
 @app.get("/history/{username}")
 def get_user_history(username: str):

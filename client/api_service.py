@@ -4,56 +4,52 @@ class APIService:
     def __init__(self, base_url="http://127.0.0.1:8000"):
         self.base_url = base_url
 
-    def login(self, username, password):
+    # --- פונקציה גנרית חדשה (חובה עבור יצירת התמונה) ---
+    def post(self, endpoint, data, timeout=60):
+        """
+        פונקציה מרכזית לשליחת בקשות POST.
+        מטפלת בשגיאות, בכתובת המלאה וב-Timeout.
+        """
         try:
-            payload = {"username": username, "password": password}
-            # Timeout של 30 שניות
-            response = requests.post(f"{self.base_url}/login", json=payload, timeout=30)
+            url = f"{self.base_url}{endpoint}"
+            response = requests.post(url, json=data, timeout=timeout)
             
             if response.status_code == 200:
                 return response.json()
             else:
-                return {"error": "Invalid username or password"}
+                # נסיון לחלץ הודעת שגיאה מפורטת מהשרת
+                try:
+                    error_detail = response.json().get("detail", response.text)
+                    return {"error": error_detail}
+                except:
+                    return {"error": f"Server Error {response.status_code}"}
+                    
+        except requests.exceptions.Timeout:
+            return {"error": "Connection timed out. Server is busy."}
         except Exception as e:
-            return {"error": f"Login Error: {str(e)}"}
+            return {"error": f"Connection Error: {str(e)}"}
+
+    # --- פונקציות ספציפיות (מעודכנות) ---
+
+    def login(self, username, password):
+        return self.post("/login", {"username": username, "password": password}, timeout=30)
 
     def register(self, username, password):
-        try:
-            payload = {"username": username, "password": password}
-            response = requests.post(f"{self.base_url}/register", json=payload, timeout=30)
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                # מחזיר את הודעת השגיאה הספציפית מהשרת (כגון 'Username exists')
-                try:
-                    return {"error": response.json().get("detail", "Registration failed")}
-                except:
-                    return {"error": f"Error {response.status_code}"}
-        except Exception as e:
-            return {"error": f"Connection Error: {str(e)}"}
+        return self.post("/register", {"username": username, "password": password}, timeout=30)
 
     def generate_trip(self, username, destination, origin, stops, budget, currency, interest, days):
-        try:
-            payload = {
-                "username": username,
-                "destination": destination,
-                "origin": origin,
-                "stops": stops,
-                "budget": budget,
-                "currency": currency,
-                "interest": interest,
-                "duration": days
-            }
-            # Timeout ארוך ל-AI (10 דקות)
-            response = requests.post(f"{self.base_url}/generate_trip", json=payload, timeout=600)
-            
-            if response.status_code == 200:
-                return response.json()
-            else:
-                return {"error": f"Server Error: {response.text}"}
-        except Exception as e:
-            return {"error": f"Connection Error: {str(e)}"}
+        payload = {
+            "username": username,
+            "destination": destination,
+            "origin": origin,
+            "stops": stops,
+            "budget": budget,
+            "currency": currency,
+            "interest": interest,
+            "duration": days
+        }
+        # Timeout ארוך מאוד (10 דקות) ליצירת הטיול
+        return self.post("/generate_trip", payload, timeout=600)
 
     def get_history(self, username):
         try:
@@ -61,5 +57,5 @@ class APIService:
             if response.status_code == 200:
                 return response.json()
             return []
-        except Exception as e:
+        except Exception:
             return []

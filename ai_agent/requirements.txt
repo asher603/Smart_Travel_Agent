@@ -1,7 +1,5 @@
-requests
 langchain
 langchain-community
 langchain-groq
-openai
 duckduckgo-search
 python-dotenv

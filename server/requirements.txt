@@ -10,5 +10,6 @@ langchain
 langchain-groq
 langchain-community
 duckduckgo-search
-# --- File Uploads (חובה עבור הקלטת שמע) ---
-python-multipart
+# --- Image Generation (החדשים) ---
+huggingface_hub
+pillow
