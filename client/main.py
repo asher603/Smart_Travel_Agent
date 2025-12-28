@@ -13,7 +13,7 @@ from client.styles import STYLESHEET
 
 # ייבוא המסכים
 from client.screens.login_screen import LoginScreen
-from client.screens.dashboard_screen import DashboardScreen
+from client.screens.trip_form_screen import TripFormScreen  # <--- הייבוא הנכון
 from client.screens.history_screen import HistoryScreen
 
 class MainApp(QMainWindow):
@@ -37,11 +37,15 @@ class MainApp(QMainWindow):
         
         # יצירת המסכים - מעבירים להם את פונקציית המעבר ואת ה-API
         self.login = LoginScreen(self.switch_screen, self.api)
-        self.dash = DashboardScreen(self.switch_screen, self.api)
+        
+        # --- תיקון: שימוש במחלקה הנכונה ובשם משתנה ברור ---
+        self.trip_form_screen = TripFormScreen(self.switch_screen, self.api)
+        
         self.hist = HistoryScreen(self.switch_screen, self.api)
         
+        # הוספה ל-Stack (לפי סדר האינדקסים: 0, 1, 2)
         self.stack.addWidget(self.login)
-        self.stack.addWidget(self.dash)
+        self.stack.addWidget(self.trip_form_screen) # <--- הוספת המסך הנכון
         self.stack.addWidget(self.hist)
         
         self.setCentralWidget(self.stack)
@@ -49,16 +53,19 @@ class MainApp(QMainWindow):
     def switch_screen(self, screen_name, data=None):
         """פונקציה למעבר בין מסכים"""
         idx = 0
-        if screen_name == "dashboard": 
-            # אם יש נתונים (שם משתמש), מעדכנים את הדשבורד
+        
+        if screen_name == "tripForm": # השם ששולחים מהלוגין
+            # אם יש נתונים (שם משתמש), מעדכנים את מסך הטופס
             if data:
-                self.dash.set_user(data)
+                self.trip_form_screen.set_user(data) # <--- שימוש במשתנה הנכון
             idx = 1
+            
         elif screen_name == "history": 
             # טעינת היסטוריה לפני המעבר
             if data:
                 self.hist.load_history(data)
             idx = 2
+            
         elif screen_name == "login":
             idx = 0
             

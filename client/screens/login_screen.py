@@ -30,7 +30,7 @@ class LoginScreen(QWidget):
         card_layout.setSpacing(15)
         card_layout.setContentsMargins(40, 30, 40, 40)
 
-        # --- לוגיקה לטעינת הלוגו (מהקוד שלך) ---
+        # --- לוגיקה לטעינת הלוגו ---
         logo = QLabel()
         logo.setAlignment(Qt.AlignCenter)
         
@@ -150,7 +150,8 @@ class LoginScreen(QWidget):
             if "error" in response:
                 QMessageBox.critical(self, "Login Failed", str(response["error"]))
             else:
-                self.switch("dashboard", username)
+                # --- התיקון כאן: שינוי dashboard ל-tripForm ---
+                self.switch("tripForm", username)
         else:
             # --- לוגיקה של הרשמה ---
             response = self.api.register(username, password)

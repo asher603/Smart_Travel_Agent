@@ -9,6 +9,7 @@ bcrypt
 langchain
 langchain-groq
 langchain-community
+langchain-core
 duckduckgo-search
 # --- Image Generation (החדשים) ---
 huggingface_hub
