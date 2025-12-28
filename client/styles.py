@@ -1,173 +1,114 @@
 STYLESHEET = """
-    /* --- הגדרות בסיס --- */
-    QMainWindow { background-color: #f0f2f5; }
-    QWidget { font-family: 'Segoe UI', Arial, sans-serif; }
-    
-    /* --- טקסטים וכותרות --- */
-    QLabel { color: #263238; }
-    QLabel#Header { font-size: 26px; font-weight: 900; color: #1565c0; }
-    QLabel#SectionTitle { font-size: 18px; font-weight: bold; color: #37474f; margin-bottom: 5px; }
-    QLabel#InputLabel { font-size: 14px; font-weight: 600; color: #546e7a; margin-top: 5px; }
+    /* --- רקע כללי לאפליקציה (גרדיאנט יוקרתי) --- */
+    QMainWindow, QWidget#MainContainer {
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #141E30, stop:1 #243B55);
+        font-family: 'Segoe UI', sans-serif;
+    }
 
-    /* --- שדות טקסט רגילים (LineEdit) --- */
-    QLineEdit { 
+    /* --- כרטיסיות (Cards) - המקום שבו התוכן יושב --- */
+    QFrame#Card {
         background-color: #ffffff;
-        color: #333333;
-        border: 1px solid #cfd8dc;
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 14px;
-        min-height: 25px;
+        border-radius: 20px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
     }
-    QLineEdit:focus { border: 2px solid #2196f3; }
 
-    /* --- שדות מספרים (QSpinBox) - התיקון הגדול --- */
-    QSpinBox {
+    /* --- כותרות --- */
+    QLabel#Header {
+        color: #ffffff;
+        font-size: 28px;
+        font-weight: 900;
+        padding-bottom: 10px;
+        background: transparent;
+    }
+    
+    QLabel#SubHeader {
+        color: #37474f;
+        font-size: 20px;
+        font-weight: bold;
+        background: transparent;
+    }
+
+    QLabel {
+        color: #455a64;
+        font-size: 14px;
+        font-weight: 600;
+        background: transparent;
+    }
+
+    /* --- שדות קלט (Inputs) --- */
+    QLineEdit, QComboBox, QDateEdit, QSpinBox, QPlainTextEdit {
+        background-color: #f4f6f8;
+        border: 1px solid #cfd8dc;
+        border-radius: 10px;
+        padding: 10px;
+        font-size: 14px;
+        color: #263238;
+    }
+    
+    QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QPlainTextEdit:focus {
         background-color: #ffffff;
-        color: #333333;
-        border: 1px solid #cfd8dc;
-        border-radius: 6px;
-        padding: 8px 10px; /* רווח לטקסט */
-        font-size: 14px;
-        min-height: 25px;
-    }
-    QSpinBox:focus { border: 2px solid #2196f3; }
-
-    /* כפתורי החצים (הריבועים עצמם) */
-    QSpinBox::up-button, QSpinBox::down-button {
-        subcontrol-origin: border;
-        width: 25px; /* כפתורים רחבים שקל ללחוץ */
-        background-color: #eceff1; /* אפור בהיר */
-        border-left: 1px solid #cfd8dc;
+        border: 2px solid #3498db;
     }
 
-    QSpinBox::up-button {
-        subcontrol-position: top right; /* ימין למעלה */
-        border-top-right-radius: 6px; /* עיגול פינה */
-        border-bottom: 1px solid #cfd8dc;
+    /* --- לוח שנה (Calendar Widget) --- */
+    QCalendarWidget QToolButton {
+        color: black;
+        icon-size: 20px;
+        background-color: transparent;
     }
-    
-    QSpinBox::down-button {
-        subcontrol-position: bottom right; /* ימין למטה */
-        border-bottom-right-radius: 6px; /* עיגול פינה */
+    QCalendarWidget QMenu {
+        background-color: white;
+        color: black;
     }
-
-    QSpinBox::up-button:hover, QSpinBox::down-button:hover {
-        background-color: #cfd8dc; /* הדגשה במעבר עכבר */
-    }
-    
-    QSpinBox::up-button:pressed, QSpinBox::down-button:pressed {
-        background-color: #b0bec5; /* כהה יותר בלחיצה */
+    QCalendarWidget QSpinBox {
+        background-color: white;
+        color: black;
     }
 
-    /* --- ציור החצים (המשולשים השחורים) --- */
-    /* זה הטריק שמצייר חץ בלי תמונה */
-    QSpinBox::up-arrow {
-        image: none;
-        width: 0; height: 0;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-bottom: 6px solid #37474f; /* צבע החץ (שחור/אפור כהה) */
-        margin: 4px;
-    }
-
-    QSpinBox::down-arrow {
-        image: none;
-        width: 0; height: 0;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-top: 6px solid #37474f; /* צבע החץ */
-        margin: 4px;
-    }
-
-    /* --- תיבת בחירה (ComboBox) --- */
-    QComboBox {
-        background-color: #ffffff;
-        color: #333333;
-        border: 1px solid #cfd8dc;
-        border-radius: 6px;
-        padding: 8px 10px;
-        font-size: 14px;
-        min-height: 25px;
-    }
-    QComboBox:focus { border: 2px solid #2196f3; }
-    
-    QComboBox::drop-down {
-        subcontrol-origin: padding;
-        subcontrol-position: top right;
-        width: 25px;
-        border-left: 1px solid #cfd8dc;
-        background-color: #eceff1;
-        border-top-right-radius: 6px;
-        border-bottom-right-radius: 6px;
-    }
-    
-    /* חץ למטה ב-ComboBox */
-    QComboBox::down-arrow {
-        image: none;
-        width: 0; height: 0;
-        border-left: 5px solid transparent;
-        border-right: 5px solid transparent;
-        border-top: 6px solid #37474f;
-        margin: 8px;
-    }
-
-    /* --- כפתורים --- */
+    /* --- כפתור ראשי (Gradient) --- */
     QPushButton#PrimaryBtn {
-        background-color: #1565c0;
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3498db, stop:1 #2980b9);
         color: white;
         border: none;
-        border-radius: 8px;
-        padding: 12px;
-        font-weight: bold;
-        font-size: 16px;
-    }
-    QPushButton#PrimaryBtn:hover { background-color: #0d47a1; }
-    QPushButton#PrimaryBtn:pressed { background-color: #002171; }
-    QPushButton#PrimaryBtn:disabled { background-color: #b0bec5; color: #eceff1; }
-
-    QPushButton#SecondaryBtn {
-        background-color: white;
-        color: #455a64;
-        border: 1px solid #b0bec5;
-        border-radius: 6px;
-        padding: 6px 12px;
-        font-weight: 600;
-    }
-    QPushButton#SecondaryBtn:hover { background-color: #f5f5f5; border: 1px solid #78909c; }
-
-    /* --- טאבים (Login) --- */
-    QPushButton.TabBtn {
-        background-color: transparent;
-        color: #90a4ae;
-        border: none;
-        border-bottom: 3px solid transparent;
-        font-size: 16px;
-        font-weight: bold;
-        padding: 10px;
-    }
-    QPushButton.TabBtn[active="true"] {
-        color: #1565c0;
-        border-bottom: 3px solid #1565c0;
-    }
-
-    /* --- כרטיסים --- */
-    QFrame#Card {
-        background-color: white;
         border-radius: 12px;
-        border: 1px solid #e0e0e0;
+        padding: 12px 24px;
+        font-size: 16px;
+        font-weight: bold;
+    }
+    QPushButton#PrimaryBtn:hover {
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2980b9, stop:1 #3498db);
+        margin-top: -2px; /* אפקט לחיצה */
+    }
+
+    /* --- כפתור משני --- */
+    QPushButton#SecondaryBtn {
+        background-color: transparent;
+        border: 2px solid #bdc3c7;
+        color: #bdc3c7;
+        border-radius: 12px;
+        padding: 10px 20px;
+        font-weight: bold;
+    }
+    QPushButton#SecondaryBtn:hover {
+        border-color: #ffffff;
+        color: #ffffff;
     }
     
-    /* --- גלילה --- */
-    QScrollBar:vertical {
-        border: none;
-        background: #f1f1f1;
-        width: 8px;
-        margin: 0px;
+    /* --- רשימות --- */
+    QListWidget {
+        background-color: #ffffff;
+        border-radius: 10px;
+        border: 1px solid #eceff1;
+        padding: 5px;
     }
-    QScrollBar::handle:vertical {
-        background: #c1c1c1;
-        min-height: 20px;
-        border-radius: 4px;
+    QListWidget::item {
+        color: #333;
+        padding: 10px;
+        border-bottom: 1px solid #f0f0f0;
+    }
+    QListWidget::item:selected {
+        background-color: #e3f2fd;
+        color: #1565c0;
+        border-radius: 8px;
     }
 """

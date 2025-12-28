@@ -7,20 +7,9 @@ from PySide6.QtCore import Qt, QThread, Signal, QByteArray, QTimer
 from PySide6.QtGui import QPixmap, QImage
 
 from client.components.custom_widgets import Card
-from client.logic.workers import TripWorker
 
-# --- סגנון (CSS) ---
-STYLESHEET = """
-    QWidget { font-family: 'Segoe UI', Arial, sans-serif; }
-    
-    QListWidget { border: none; background: #fafafa; border-right: 1px solid #ddd; }
-    QListWidget::item { padding: 10px; border-bottom: 1px solid #eee; }
-    QListWidget::item:selected { background: #e3f2fd; color: #1565c0; border-left: 4px solid #1565c0; }
-    
-    QLabel#Title { font-size: 18px; font-weight: bold; color: #1565c0; }
-"""
+# --- Workers ---
 
-# --- Worker לתמונה ---
 class ImageWorker(QThread):
     finished_signal = Signal(str) 
     def __init__(self, api, destination, interest):
@@ -31,27 +20,23 @@ class ImageWorker(QThread):
     def run(self):
         try:
             response = self.api.post("/generate_image", {"destination": self.destination, "interest": self.interest})
-            if response and "image_base64" in response: self.finished_signal.emit(response["image_base64"])
-            else: self.finished_signal.emit(None)
-        except: self.finished_signal.emit(None)
+            if response and "image_base64" in response: 
+                self.finished_signal.emit(response["image_base64"])
+            else: 
+                self.finished_signal.emit(None)
+        except: 
+            self.finished_signal.emit(None)
 
-# --- Worker לצ'אט (מתחבר לתיקון שעשינו בשרת) ---
 class ChatWorker(QThread):
     finished_signal = Signal(str)
-    
     def __init__(self, api, question, context):
         super().__init__()
         self.api = api
         self.question = question
         self.context = context
-
     def run(self):
         try:
-            # שליחת השאלה לשרת (Endpoint: /ask_question)
-            response = self.api.post("/ask_question", {
-                "question": self.question,
-                "context": self.context
-            })
+            response = self.api.post("/ask_question", {"question": self.question, "context": self.context})
             if response and "answer" in response:
                 self.finished_signal.emit(response["answer"])
             else:
@@ -59,40 +44,38 @@ class ChatWorker(QThread):
         except Exception as e:
             self.finished_signal.emit(f"Error: {str(e)}")
 
-
-class TripResultWindow(QWidget):
-    """
-    חלון עצמאי המציג את פיד הטיול, הצ'אט וההיסטוריה.
-    """
-    def __init__(self, api, user, trip_data):
+# --- המסך הראשי ---
+class TripScreen(QWidget):
+    def __init__(self, switch_screen_callback, api):
         super().__init__()
+        self.switch_screen = switch_screen_callback
         self.api = api
-        self.user = user
-        self.trip_data = trip_data 
-        
-        self.setWindowTitle(f"Trip to {trip_data['dest']} ✈️")
-        self.resize(1100, 800)
-        self.setStyleSheet(STYLESHEET)
-        
         self.trip_counter = 0
         self.trip_widgets_map = {}
-        # אתחול ההקשר הבסיסי
-        self.current_context = f"Destination: {trip_data['dest']}\nBudget: {trip_data['budg']}\nInterests: {trip_data['interest']}\n"
-
+        self.current_context = ""
+        self.trip_data = {} # נשמור כאן את המידע המלא
+        
         self.setup_ui()
-        # יצירת הטיול הראשון אוטומטית
-        QTimer.singleShot(500, lambda: self.generate_trip_block("Initial Plan"))
 
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0,0,0,0)
-        main_layout.setSpacing(0)
         
+        # Top Bar
+        top_bar = QHBoxLayout()
+        back_btn = QPushButton("🔙 Back to Home")
+        back_btn.setFixedSize(120, 30)
+        back_btn.setStyleSheet("background: transparent; color: #333; border: 1px solid #ccc; border-radius: 5px;")
+        back_btn.clicked.connect(lambda: self.switch_screen(1))
+        top_bar.addWidget(back_btn)
+        top_bar.addStretch()
+        main_layout.addLayout(top_bar)
+
         splitter = QSplitter(Qt.Horizontal)
         
-        # צד ימין (רשימה)
+        # Sidebar
         self.toc_widget = QWidget()
-        self.toc_widget.setFixedWidth(220)
+        self.toc_widget.setFixedWidth(200)
         self.toc_widget.setStyleSheet("background: #fdfdfd; border-right: 1px solid #ccc;")
         toc_l = QVBoxLayout(self.toc_widget)
         toc_l.addWidget(QLabel("📅 Versions", styleSheet="font-weight:bold; color:#546e7a; padding:10px;"))
@@ -100,7 +83,7 @@ class TripResultWindow(QWidget):
         self.trip_list.itemClicked.connect(self.scroll_to_item)
         toc_l.addWidget(self.trip_list)
         
-        # מרכז (פיד)
+        # Main Feed
         self.scroll_area = QScrollArea()
         self.scroll_area.setWidgetResizable(True)
         self.scroll_area.setStyleSheet("background: #f4f6f8; border: none;")
@@ -113,28 +96,24 @@ class TripResultWindow(QWidget):
         
         splitter.addWidget(self.toc_widget)
         splitter.addWidget(self.scroll_area)
-        splitter.setCollapsible(0, False)
         main_layout.addWidget(splitter)
         
-        # תחתית (צ'אט)
+        # Chat / Action Bar
         chat_frame = QFrame()
         chat_frame.setStyleSheet("background: white; border-top: 1px solid #ccc;")
-        chat_frame.setFixedHeight(80)
+        chat_frame.setFixedHeight(70)
         cl = QHBoxLayout(chat_frame)
         
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["❓ Question", "🛠️ Fix / New Trip"])
-        self.mode_combo.setFixedWidth(130)
-        self.mode_combo.setStyleSheet("border: 1px solid #ccc; border-radius: 4px; padding: 5px;")
+        self.mode_combo.setFixedWidth(140)
         
         self.chat_input = QLineEdit()
-        self.chat_input.setPlaceholderText("Type your request here...")
-        self.chat_input.setStyleSheet("border: 1px solid #ccc; border-radius: 4px; padding: 8px;")
+        self.chat_input.setPlaceholderText("Ask a question or request changes...")
         self.chat_input.returnPressed.connect(self.on_send)
         
         btn_send = QPushButton("Send ➤")
-        btn_send.setStyleSheet("background: #2e7d32; color: white; border-radius: 4px; padding: 8px 15px; font-weight: bold; border: none;")
-        btn_send.setCursor(Qt.PointingHandCursor)
+        btn_send.setStyleSheet("background: #1565c0; color: white; border-radius: 5px; padding: 5px 15px;")
         btn_send.clicked.connect(self.on_send)
         
         cl.addWidget(self.mode_combo)
@@ -142,111 +121,140 @@ class TripResultWindow(QWidget):
         cl.addWidget(btn_send)
         main_layout.addWidget(chat_frame)
 
-    def on_send(self):
-        msg = self.chat_input.text().strip()
-        if not msg: return
-        
-        mode = self.mode_combo.currentText()
-        self.chat_input.clear()
-        
-        # הוספת הבועה של המשתמש
-        self.add_bubble(msg, is_user=True)
-        
-        if "Question" in mode:
-            # --- אופציה 1: שאלה אמיתית לשרת ---
-            # מפעילים את הבוט כדי שיראה "חושב..."
-            loading_lbl = self.add_bubble("🤔 Thinking...", is_user=False)
-            
-            # יצירת ה-Worker וחיבורו
-            self.chat_worker = ChatWorker(self.api, msg, self.current_context)
-            # כשהתשובה מגיעה -> מעדכנים את הבועה
-            self.chat_worker.finished_signal.connect(lambda ans: self.update_bubble(loading_lbl, ans))
-            self.chat_worker.start()
-            
-            # מעדכנים את ההקשר כדי שיזכור את השאלה
-            self.current_context += f"\nUser asked: {msg}"
-            
-        else:
-            # --- אופציה 2: יצירת טיול חדש ---
-            self.current_context += f"\nModification Request: {msg}"
-            self.generate_trip_block(msg)
+    def display_trip(self, trip_data, username):
+        # איפוס נתונים
+        self.trip_list.clear()
+        while self.feed_layout.count() > 1:
+            item = self.feed_layout.takeAt(0)
+            if item.widget(): item.widget().deleteLater()
 
-    def generate_trip_block(self, suffix):
+        self.trip_data = trip_data
+        self.username = username
+        self.trip_counter = 0
+        
+        initial_plan = trip_data.get("trip_plan", {})
+        
+        # שליפת שם היעד (עכשיו זה יעבוד כי תיקנו את הטופס)
+        destination = trip_data.get('destination', 'Unknown Destination')
+        budget = trip_data.get('budget', 'Unknown')
+        vibe = initial_plan.get("analyzed_vibe", "General")
+        
+        self.current_context = f"Dest: {destination}, Budget: {budget}, Vibe: {vibe}"
+        
+        self.render_trip_block("Initial Plan", initial_plan, is_new_generation=False)
+
+    def render_trip_block(self, title, plan_data, is_new_generation=True):
         self.trip_counter += 1
         ver_name = f"Ver {self.trip_counter}"
         
-        if self.trip_counter > 1:
-            sep = QFrame()
-            sep.setFixedHeight(2)
-            sep.setStyleSheet("background: #37474f; margin-top: 30px; margin-bottom: 20px;")
-            self.feed_layout.insertWidget(self.feed_layout.count()-1, sep)
-            
-        lbl = QLabel(f"Generating {ver_name}...")
-        lbl.setObjectName("Title")
-        self.feed_layout.insertWidget(self.feed_layout.count()-1, lbl)
+        list_item = QListWidgetItem(f"{ver_name} - {title}")
+        self.trip_list.addItem(list_item)
         
-        cont = QWidget()
-        QVBoxLayout(cont).setContentsMargins(0,0,0,0)
-        self.feed_layout.insertWidget(self.feed_layout.count()-1, cont)
+        lbl_title = QLabel(f"{ver_name}: {title}")
+        lbl_title.setStyleSheet("font-size: 22px; font-weight: bold; color: #1565c0; margin-top: 20px;")
+        self.feed_layout.insertWidget(self.feed_layout.count()-1, lbl_title)
+        self.trip_widgets_map[id(list_item)] = lbl_title
         
-        item = QListWidgetItem(f"{ver_name} - {suffix[:15]}")
-        self.trip_list.addItem(item)
-        self.trip_widgets_map[id(item)] = lbl
+        content_box = QWidget()
+        cv = QVBoxLayout(content_box)
         
-        self.worker = TripWorker(
-            self.api, self.user,
-            self.trip_data['dest'], self.trip_data['origin'], "",
-            self.trip_data['budg'], "USD",
-            self.current_context, self.trip_data['days']
-        )
-        self.worker.finished_signal.connect(lambda d: self.render_trip(cont, lbl, d))
-        self.worker.start()
-        
-        self.img_worker = ImageWorker(self.api, self.trip_data['dest'], self.current_context)
-        self.img_worker.finished_signal.connect(lambda b64: self.render_image(cont, b64))
-        self.img_worker.start()
-        
+        if "analyzed_vibe" in plan_data:
+             cv.addWidget(QLabel(f"✨ AI Vibe: {plan_data['analyzed_vibe']}", styleSheet="color: #6a1b9a; font-weight: bold;"))
+
+        # תמונה רק בגרסה הראשונה
+        if self.trip_counter == 1:
+             # מוודא שקיים יעד
+             dest = self.trip_data.get('destination', '')
+             self.img_worker = ImageWorker(self.api, dest, self.current_context)
+             self.img_worker.finished_signal.connect(lambda b64: self.render_image(cv, b64))
+             self.img_worker.start()
+
+        # ימים
+        for day in plan_data.get("itinerary", []):
+            card = Card()
+            cl = QVBoxLayout(card)
+            cl.addWidget(QLabel(f"Day {day.get('day')}: {day.get('title')}", styleSheet="font-weight:bold; font-size:16px"))
+            for act in day.get("activities", []):
+                cl.addWidget(QLabel(f"• {act}"))
+            cv.addWidget(card)
+
+        self.feed_layout.insertWidget(self.feed_layout.count()-1, content_box)
         self.scroll_down()
 
-    def render_trip(self, cont, lbl, data):
-        lbl.setText(lbl.text().replace("Generating", "Trip Plan:"))
-        layout = cont.layout()
-        if "error" in data:
-            layout.addWidget(QLabel(f"Error: {data['error']}"))
-            return
-        tp = data.get("trip_plan", {})
-        if isinstance(tp, str): tp = json.loads(tp)
-        
-        # שמירת התוצאה להקשר
-        summary = tp.get("summary", "")
-        self.current_context += f"\nLatest Plan Summary: {summary}"
-
-        c1 = Card()
-        l1 = QVBoxLayout(c1)
-        l1.addWidget(QLabel(summary, wordWrap=True, styleSheet="font-size:14px; line-height:1.4;"))
-        layout.addWidget(c1)
-        
-        for d in tp.get("itinerary", []):
-            dc = Card()
-            dl = QVBoxLayout(dc)
-            dl.addWidget(QLabel(f"Day {d.get('day')}: {d.get('title')}", styleSheet="font-weight:bold; font-size:16px; color:#37474f"))
-            for a in d.get("activities", []):
-                dl.addWidget(QLabel(f"• {a}", wordWrap=True))
-            layout.addWidget(dc)
-        self.scroll_down()
-
-    def render_image(self, cont, b64):
+    def render_image(self, layout, b64):
         if not b64: return
         try:
             data = base64.b64decode(b64)
             pix = QPixmap.fromImage(QImage.fromData(QByteArray(data)))
             lbl = QLabel()
-            lbl.setPixmap(pix.scaledToWidth(700, Qt.SmoothTransformation))
+            lbl.setPixmap(pix.scaledToWidth(600, Qt.SmoothTransformation))
             lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet("margin-bottom: 15px; border-radius: 10px; border: 4px solid white;")
-            cont.layout().insertWidget(0, lbl)
+            lbl.setStyleSheet("border-radius: 10px; margin-bottom: 10px;")
+            layout.insertWidget(0, lbl)
         except: pass
 
+    def on_send(self):
+        msg = self.chat_input.text().strip()
+        if not msg: return
+        self.chat_input.clear()
+        
+        self.add_bubble(msg, is_user=True)
+        mode = self.mode_combo.currentText()
+        
+        if "Question" in mode:
+            # מצב שאלה רגיל
+            loading = self.add_bubble("Thinking... 🤔", is_user=False)
+            self.chat_worker = ChatWorker(self.api, msg, self.current_context)
+            self.chat_worker.finished_signal.connect(lambda ans: self.update_bubble(loading, ans))
+            self.chat_worker.start()
+        else:
+            # מצב עריכה (Refine)
+            loading = self.add_bubble("Creating new version... 🛠️", is_user=False)
+            
+            # וידוא שיש לנו תוכנית לערוך
+            if not self.trip_data or "trip_plan" not in self.trip_data:
+                self.update_bubble(loading, "Error: No active trip to edit.")
+                return
+
+            current_plan = self.trip_data.get("trip_plan", {})
+            
+            # הגדרת ה-Worker הפנימי
+            class RefineWorker(QThread):
+                finished = Signal(dict)
+                def __init__(self, api, plan, instr):
+                    super().__init__()
+                    self.api = api
+                    self.plan = plan
+                    self.instr = instr
+                def run(self):
+                    # שליחה לשרת
+                    res = self.api.post("/refine_trip", {"current_plan": self.plan, "instruction": self.instr}, timeout=120)
+                    self.finished.emit(res)
+
+            self.refine_worker = RefineWorker(self.api, current_plan, msg)
+            
+            # מה קורה כשהתשובה חוזרת
+            def on_refine_done(response):
+                # בדיקת הצלחה
+                if response and "trip_plan" in response:
+                    self.update_bubble(loading, "Done! Added new version to the list 👈")
+                    new_plan = response["trip_plan"]
+                    
+                    # הוספת הגרסה החדשה לרשימה ולמסך
+                    self.render_trip_block(f"Fix: {msg}", new_plan, is_new_generation=False)
+                    
+                    # עדכון הזיכרון כדי שהשינוי הבא יהיה על הגרסה הזאת
+                    self.trip_data["trip_plan"] = new_plan
+                
+                # טיפול בשגיאות
+                elif response and "error" in response:
+                    self.update_bubble(loading, f"Server Error: {response['error']}")
+                else:
+                    self.update_bubble(loading, "Unknown error occurred. Try again.")
+
+            self.refine_worker.finished.connect(on_refine_done)
+            self.refine_worker.start()
+            
     def add_bubble(self, text, is_user):
         lbl = QLabel(text)
         lbl.setWordWrap(True)
@@ -260,16 +268,15 @@ class TripResultWindow(QWidget):
         self.scroll_down()
         return lbl
 
-    def update_bubble(self, lbl, new_text):
-        """ פונקציה לעדכון הבועה כשהתשובה מגיעה """
-        lbl.setText(new_text)
+    def update_bubble(self, lbl, text):
+        lbl.setText(text)
         self.scroll_down()
 
     def scroll_down(self):
         QTimer.singleShot(100, lambda: self.scroll_area.verticalScrollBar().setValue(
             self.scroll_area.verticalScrollBar().maximum()
         ))
-        
+
     def scroll_to_item(self, item):
         w = self.trip_widgets_map.get(id(item))
         if w: self.scroll_area.ensureWidgetVisible(w)

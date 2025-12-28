@@ -1,34 +1,22 @@
 import sys
 import os
+
+# --- תיקון נתיבים ---
+current_dir = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(current_dir)
+sys.path.append(parent_dir)
+
 import uvicorn
-import base64
-from io import BytesIO
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from dotenv import load_dotenv, find_dotenv
+from dotenv import load_dotenv
 
-# --- Imports for Chat & Image ---
-from huggingface_hub import InferenceClient
-from langchain_groq import ChatGroq
-from langchain_core.messages import HumanMessage, SystemMessage
-
-# טעינת סביבה
-load_dotenv(find_dotenv())
-HF_TOKEN = os.getenv("HF_TOKEN")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import server.database as db
+from server.services import auth_service, trip_service, image_service
 
-try:
-    from ai_agent.agent_core import TravelAgent
-    agent = TravelAgent()
-    print("✅ AI Agent loaded successfully.")
-except ImportError as e:
-    agent = None
-    print(f"⚠️ Warning: 'ai_agent' module not found. Error: {e}")
+load_dotenv()
 
 app = FastAPI(title="Smart Travel Agent API")
 
@@ -44,7 +32,7 @@ app.add_middleware(
 def startup_db_client():
     db.init_db()
 
-# --- Models ---
+# --- מודלים ---
 class LoginRequest(BaseModel):
     username: str
     password: str
@@ -71,94 +59,55 @@ class ChatRequest(BaseModel):
     question: str
     context: str
 
+# מודל חדש לעריכה
+class RefineRequest(BaseModel):
+    current_plan: dict
+    instruction: str
+
 # --- Endpoints ---
 
 @app.post("/register")
 async def register(req: RegisterRequest):
-    if db.create_user(req.username, req.password):
-        return {"status": "success", "message": "User created successfully"}
-    raise HTTPException(status_code=400, detail="Username already exists")
+    return auth_service.register_user(req)
 
 @app.post("/login")
 async def login(req: LoginRequest):
-    if db.verify_user(req.username, req.password):
-        return {"status": "success", "username": req.username}
-    else:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+    return auth_service.login_user(req)
 
 @app.post("/generate_trip")
 async def generate_trip(req: TripRequest):
-    print(f"🚀 Generating Trip: {req.destination}")
-    detected_interest = req.interest.title()
-    try:
-        if agent:
-            response_data = agent.generate_response(
-                destination=req.destination,
-                origin=req.origin,
-                stops=req.stops,
-                duration=req.duration,
-                budget=req.budget,
-                currency=req.currency,
-                interest=detected_interest
-            )
-            if "error" in response_data:
-                raise HTTPException(status_code=500, detail=response_data["error"])
-            trip_plan = response_data.get("trip_plan", {})
-        else:
-            trip_plan = {"summary": "Mock trip", "itinerary": []}
+    db.log_event("TripGenerated", req.dict())
+    return trip_service.generate_trip_plan(req)
 
-        trip_plan["detected_interest"] = detected_interest 
-        return {"trip_plan": trip_plan}
-
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Endpoint חדש לעריכה
+@app.post("/refine_trip")
+async def refine_trip(req: RefineRequest):
+    return trip_service.refine_trip_plan(req.current_plan, req.instruction)
 
 @app.post("/generate_image")
 async def generate_image(req: ImageRequest):
-    print(f"🎨 Generating Image: {req.destination}")
-    image_prompt = f"travel poster of {req.destination}"
-    if req.interest:
-        image_prompt += f", {req.interest} theme"
-    image_prompt += ", cinematic, 8k, vibrant."
-    
-    try:
-        client = InferenceClient(api_key=HF_TOKEN)
-        image = client.text_to_image(prompt=image_prompt, model="black-forest-labs/FLUX.1-schnell")
-        buffered = BytesIO()
-        image.save(buffered, format="PNG")
-        img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
-        return {"image_base64": img_str}
-    except Exception as e:
-        print(f"❌ Image Error: {e}")
-        return {"image_base64": None}
+    return image_service.generate_trip_image(req.destination, req.interest)
+
+# --- Chat ---
+from langchain_groq import ChatGroq
+from langchain_core.messages import HumanMessage, SystemMessage
 
 @app.post("/ask_question")
 async def ask_question(req: ChatRequest):
-    """
-    מקבל שאלה והקשר, ומחזיר תשובה טקסטואלית מהירה.
-    """
-    print(f"❓ Question: {req.question}")
     try:
-        # --- תיקון: עדכון שם המודל לגרסה החדשה והנתמכת ---
-        llm = ChatGroq(
-            temperature=0.7, 
-            model_name="llama-3.3-70b-versatile", # מודל עדכני
-            api_key=GROQ_API_KEY
-        )
-        
+        api_key = os.getenv("GROQ_API_KEY")
+        if not api_key:
+            return {"answer": "Error: GROQ_API_KEY missing"}
+
+        llm = ChatGroq(temperature=0.7, model_name="llama-3.3-70b-versatile", api_key=api_key)
         messages = [
-            SystemMessage(content="You are a helpful travel assistant. Answer the user's question clearly and concisely based on the trip context provided."),
-            HumanMessage(content=f"TRIP CONTEXT:\n{req.context}\n\nUSER QUESTION:\n{req.question}")
+            SystemMessage(content="You are a helpful travel assistant."),
+            HumanMessage(content=f"CONTEXT:\n{req.context}\n\nQUESTION:\n{req.question}")
         ]
-        
         response = llm.invoke(messages)
         return {"answer": response.content}
-        
     except Exception as e:
-        print(f"❌ Chat Error: {e}")
-        # החזרת שגיאה מפורטת יותר כדי שתראה אותה בבועה אם משהו נכשל
-        return {"answer": f"Sorry, I encountered an error: {str(e)}"}
+        return {"answer": f"Error: {str(e)}"}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)
