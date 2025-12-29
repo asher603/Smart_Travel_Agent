@@ -8,8 +8,9 @@ sys.path.append(parent_dir)
 
 from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
 from client.screens.login_screen import LoginScreen
+from client.screens.menu_screen import MenuScreen
 from client.screens.trip_form_screen import TripFormScreen
-from client.screens.trip_screen import TripScreen # עכשיו זה יעבוד
+from client.screens.trip_screen import TripScreen
 from client.screens.history_screen import HistoryScreen
 from client.api_service import APIService
 from client.styles import STYLESHEET
@@ -22,7 +23,7 @@ class MainApp(QMainWindow):
         self.setStyleSheet(STYLESHEET)
         
         self.api = APIService()
-        self.username = "Guest" # נשמור את שם המשתמש כאן
+        self.username = "Guest"
 
         self.container = QStackedWidget()
         self.container.setObjectName("MainContainer")
@@ -31,38 +32,54 @@ class MainApp(QMainWindow):
         self.init_screens()
 
     def init_screens(self):
-        # מסך 0: התחברות
+        # 0: Login
         self.login_screen = LoginScreen(self.handle_login, self.api)
         self.container.addWidget(self.login_screen)
 
-        # מסך 1: טופס
+        # 1: Menu
+        self.menu_screen = MenuScreen(self.switch_screen)
+        self.container.addWidget(self.menu_screen)
+
+        # 2: Form
         self.trip_form_screen = TripFormScreen(self.api)
         self.trip_form_screen.trip_generated.connect(self.handle_trip_generated)
         self.container.addWidget(self.trip_form_screen)
 
-        # מסך 2: תוצאות (התיקון: מעבירים גם את ה-API)
+        # 3: Trip Results
         self.trip_screen = TripScreen(self.switch_screen, self.api)
         self.container.addWidget(self.trip_screen)
 
-        # מסך 3: היסטוריה
+        # 4: History
         self.history_screen = HistoryScreen(self.switch_screen, self.api)
         self.container.addWidget(self.history_screen)
 
     def handle_login(self, index, data=None):
-        # פונקציה מיוחדת ששומרת את המשתמש אחרי התחברות
-        if data and "username" in data:
+        # כשמתחברים, שומרים את שם המשתמש ב-MainApp
+        if isinstance(data, str):
+            self.username = data
+        elif isinstance(data, dict) and "username" in data:
             self.username = data["username"]
-        self.switch_screen(index)
+        
+        # מעדכנים את מסך התפריט
+        self.menu_screen.set_user(self.username)
+        self.switch_screen(1)
 
-    def switch_screen(self, index, data=None):
+    def switch_screen(self, index, data=None, mode=None):
+        # --- עדכונים לפני מעבר מסך ---
+        if index == 2: # כניסה לטופס
+            self.trip_form_screen.username = self.username
+            
+        if index == 4: # כניסה להיסטוריה
+            self.history_screen.load_history(self.username)
+            
+        if index == 3 and mode == "load" and data: # טעינה מהיסטוריה
+            self.trip_screen.load_existing_trip(data)
+
         self.container.setCurrentIndex(index)
-        if index == 3: # היסטוריה
-            self.history_screen.load_history()
 
     def handle_trip_generated(self, trip_data):
-        # כאן אנחנו מפעילים את הפונקציה שתציג את הטיול
-        self.trip_screen.display_trip(trip_data, self.username)
-        self.switch_screen(2)
+        self.trip_screen.init_new_trip(trip_data, self.username)
+        self.switch_screen(3)
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

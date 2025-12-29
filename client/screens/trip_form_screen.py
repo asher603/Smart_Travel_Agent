@@ -13,6 +13,7 @@ class TripFormScreen(QWidget):
     def __init__(self, api_service):
         super().__init__()
         self.api_service = api_service
+        self.username = "Guest"  # ייקבע מחדש על ידי ה-MainApp
         # משתנה קריטי: שומר את מה שהמשתמש הזין כדי להעביר למסך הבא
         self.current_request_data = {} 
         self.init_ui()
@@ -103,10 +104,10 @@ class TripFormScreen(QWidget):
         main_layout.addWidget(card)
 
     def handle_generate(self):
-        dest = self.dest_input.text()
-        origin = self.origin_input.text()
-        budget = self.budget_input.text()
-        interest = self.interest_input.toPlainText()
+        dest = self.dest_input.text().strip()
+        origin = self.origin_input.text().strip()
+        budget = self.budget_input.text().strip()
+        interest = self.interest_input.toPlainText().strip()
         
         # חישוב משך הטיול
         start = self.start_date.date()
@@ -122,11 +123,12 @@ class TripFormScreen(QWidget):
             QMessageBox.warning(self, "Invalid Dates", "End date must be after start date!")
             return
 
-        # הכנת הנתונים
+        # הכנת הנתונים לסנכרון עם TripRequest בשרת
         trip_data = {
+            "username": self.username, # <--- התיקון הקריטי: שם המשתמש נשלח לשרת
             "destination": dest,
             "origin": origin,
-            "budget": int(budget),
+            "budget": int(budget) if budget.isdigit() else 0,
             "currency": self.currency_input.currentText(),
             "interest": interest,
             "duration": duration,
@@ -134,27 +136,24 @@ class TripFormScreen(QWidget):
             "end_date": end.toString("yyyy-MM-dd")
         }
         
-        # --- שמירת הנתונים בצד (התיקון החשוב!) ---
+        # שמירת הנתונים בצד
         self.current_request_data = trip_data 
         
         # שינוי כפתור לחיווי טעינה
         self.generate_btn.setText("Generating... ⏳")
         self.generate_btn.setEnabled(False)
 
-        # שליחה לשרת
+        # שליחה לשרת (ה-API Service כבר יודע לטפל בזה)
         self.api_service.generate_trip(trip_data, self.on_success, self.on_error)
 
     def on_success(self, response):
         self.generate_btn.setText("✨ Generate My Trip")
         self.generate_btn.setEnabled(True)
         
-        # --- איחוד המידע (התיקון החשוב!) ---
-        # אנחנו לוקחים את הנתונים שהמשתמש הזין (כמו destination)
-        # ומוסיפים להם את התשובה מהשרת (trip_plan)
+        # איחוד המידע
         full_data = self.current_request_data.copy()
         full_data.update(response)
         
-        # עכשיו full_data מכיל גם את 'destination' וגם את 'trip_plan'
         self.trip_generated.emit(full_data)
 
     def on_error(self, error_msg):
