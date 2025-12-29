@@ -3,17 +3,14 @@ import json
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 
-# נשתמש באותו מפתח API שכבר מוגדר אצלך
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 def get_llm():
-    """מחזיר מופע של המודל לשימוש חוזר"""
     if not GROQ_API_KEY:
         raise ValueError("GROQ_API_KEY is missing!")
     return ChatGroq(temperature=0.7, model_name="llama-3.3-70b-versatile", api_key=GROQ_API_KEY)
 
 def analyze_vibe(interest: str) -> str:
-    """מנתח את סגנון הטיול על סמך תחומי העניין"""
     try:
         llm = get_llm()
         msg = f"Analyze the following travel interest and return a ONE or TWO word category describing the vibe (e.g., 'Culinary', 'Adventure', 'Relaxing', 'Historical'). Interest: '{interest}'"
@@ -23,15 +20,26 @@ def analyze_vibe(interest: str) -> str:
         print(f"⚠️ Analysis Warning: {e}")
         return "General"
 
+def normalize_trip_response(trip_data, req):
+    """מוודא שהמבנה אחיד ללקוח"""
+    # אם ה-AI עטף בתוך trip_plan, נוציא את זה החוצה
+    if "trip_plan" in trip_data:
+        trip_data = trip_data["trip_plan"]
+    
+    return {
+        "summary": trip_data.get("summary", "No summary available"),
+        "analyzed_vibe": trip_data.get("analyzed_vibe", "General"),
+        "itinerary": trip_data.get("itinerary", []),
+        "destination": req.destination,
+        "budget": req.budget
+    }
+
 def generate_trip_plan(req):
-    """מייצר את מסלול הטיול המלא"""
     print(f"🚀 Generating trip to {req.destination}...")
     
-    # 1. ניתוח וייב (עם טיפול בשגיאות)
     vibe = analyze_vibe(req.interest)
     print(f"✨ Vibe Detected: {vibe}")
 
-    # 2. בניית הפרומפט
     prompt = f"""
     Create a detailed {req.duration}-day trip itinerary for {req.destination}.
     Budget: {req.budget} {req.currency}.
@@ -46,8 +54,7 @@ def generate_trip_plan(req):
                 "day": 1,
                 "title": "Theme of the day",
                 "activities": ["Activity 1", "Activity 2", "Restaurant recommendation"]
-            }},
-            ...
+            }}
         ]
     }}
     Do NOT add any text outside the JSON.
@@ -60,26 +67,26 @@ def generate_trip_plan(req):
             HumanMessage(content=prompt)
         ])
         
-        # ניקוי ופירסור ה-JSON
         content = response.content.strip()
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         elif "```" in content:
             content = content.split("```")[1].split("```")[0].strip()
             
-        trip_data = json.loads(content)
-        return trip_data
+        raw_data = json.loads(content)
+        return normalize_trip_response(raw_data, req)
 
     except Exception as e:
         print(f"❌ Trip Generation Error: {e}")
         return {
             "summary": "Could not generate trip due to an error.",
             "analyzed_vibe": "Error",
-            "itinerary": []
+            "itinerary": [],
+            "destination": req.destination,
+            "budget": req.budget
         }
 
 def refine_trip_plan(current_plan, instruction):
-    """עריכת טיול קיים"""
     print(f"🛠️ Refining trip with instruction: {instruction}")
     
     prompt = f"""
@@ -103,6 +110,7 @@ def refine_trip_plan(current_plan, instruction):
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
         
+        # כאן אנחנו מחזירים אובייקט עם המפתח trip_plan כי זה מה שהלקוח מצפה ב-Refine
         return {"trip_plan": json.loads(content)}
         
     except Exception as e:

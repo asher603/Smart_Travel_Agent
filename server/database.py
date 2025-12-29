@@ -11,7 +11,7 @@ load_dotenv(find_dotenv())
 CONNECTION_STRING = os.getenv("MONGODB_URI")
 DB_NAME = "smart_travel_agent_db"
 COLLECTION_USERS = "users"
-COLLECTION_TRIPS = "trips"  # קולקציה ייעודית לטיולים מלאים
+COLLECTION_TRIPS = "trips"
 
 client = None
 db = None
@@ -55,10 +55,9 @@ def verify_user(username, password):
         return bcrypt.checkpw(password.encode('utf-8'), user['password'])
     return False
 
-# --- ניהול טיולים מלאים ---
+# --- ניהול טיולים ---
 
 def create_new_trip(username, initial_data):
-    """יוצר מסמך טיול חדש ומחזיר את ה-ID שלו"""
     if db is None: init_db()
     if db is not None:
         trip_doc = {
@@ -66,17 +65,21 @@ def create_new_trip(username, initial_data):
             "destination": initial_data.get("destination", "Unknown"),
             "created_at": datetime.now().isoformat(),
             "last_updated": datetime.now().isoformat(),
-            "trip_data": initial_data, # המידע הגולמי (תקציב, ימים וכו')
-            "chat_history": [] # כאן יישמר כל הצ'אט
+            "trip_data": initial_data,
+            "chat_history": []
         }
         result = db[COLLECTION_TRIPS].insert_one(trip_doc)
         return str(result.inserted_id)
     return None
 
 def update_trip_history(trip_id, chat_history):
-    """מעדכן את היסטוריית הצ'אט של טיול קיים"""
     if db is None: init_db()
     if db is not None:
+        # רשת ביטחון: לא שומרים היסטוריה ריקה אם כבר יש מידע
+        if not chat_history:
+            print("⚠️ Warning: Received empty history update. Skipping to prevent data loss.")
+            return False
+
         try:
             db[COLLECTION_TRIPS].update_one(
                 {"_id": ObjectId(trip_id)},
@@ -93,10 +96,8 @@ def update_trip_history(trip_id, chat_history):
     return False
 
 def get_user_trips_summary(username):
-    """מחזיר רשימה מקוצרת של טיולים להיסטוריה"""
     if db is None: init_db()
     if db is not None:
-        # שולף רק שדות רלוונטיים לתצוגה ברשימה
         cursor = db[COLLECTION_TRIPS].find(
             {"username": username},
             {"_id": 1, "destination": 1, "created_at": 1, "trip_data.budget": 1}
@@ -114,7 +115,6 @@ def get_user_trips_summary(username):
     return []
 
 def get_full_trip(trip_id):
-    """שולף את כל המידע על הטיול כדי לשחזר אותו"""
     if db is None: init_db()
     if db is not None:
         try:
