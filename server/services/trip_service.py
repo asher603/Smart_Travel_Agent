@@ -20,9 +20,8 @@ def analyze_vibe(interest: str) -> str:
         print(f"⚠️ Analysis Warning: {e}")
         return "General"
 
-def normalize_trip_response(trip_data, req):
+def normalize_trip_response(trip_data, req_dest="Trip", req_budget="?"):
     """מוודא שהמבנה אחיד ללקוח"""
-    # אם ה-AI עטף בתוך trip_plan, נוציא את זה החוצה
     if "trip_plan" in trip_data:
         trip_data = trip_data["trip_plan"]
     
@@ -30,13 +29,12 @@ def normalize_trip_response(trip_data, req):
         "summary": trip_data.get("summary", "No summary available"),
         "analyzed_vibe": trip_data.get("analyzed_vibe", "General"),
         "itinerary": trip_data.get("itinerary", []),
-        "destination": req.destination,
-        "budget": req.budget
+        "destination": req_dest,
+        "budget": req_budget
     }
 
 def generate_trip_plan(req):
     print(f"🚀 Generating trip to {req.destination}...")
-    
     vibe = analyze_vibe(req.interest)
     print(f"✨ Vibe Detected: {vibe}")
 
@@ -74,16 +72,15 @@ def generate_trip_plan(req):
             content = content.split("```")[1].split("```")[0].strip()
             
         raw_data = json.loads(content)
-        return normalize_trip_response(raw_data, req)
+        # שימוש בנורמליזציה
+        return normalize_trip_response(raw_data, req.destination, req.budget)
 
     except Exception as e:
         print(f"❌ Trip Generation Error: {e}")
         return {
             "summary": "Could not generate trip due to an error.",
             "analyzed_vibe": "Error",
-            "itinerary": [],
-            "destination": req.destination,
-            "budget": req.budget
+            "itinerary": []
         }
 
 def refine_trip_plan(current_plan, instruction):
@@ -97,21 +94,31 @@ def refine_trip_plan(current_plan, instruction):
 
     Please modify the trip plan according to the instruction. 
     Keep the exact same JSON structure. Output ONLY JSON.
+    Do NOT add any introductory text.
     """
 
     try:
         llm = get_llm()
         response = llm.invoke([
-            SystemMessage(content="You are a JSON editing assistant."),
+            SystemMessage(content="You are a JSON editing assistant. Output ONLY valid JSON."),
             HumanMessage(content=prompt)
         ])
         
         content = response.content.strip()
+        # ניקוי המחרוזת (אותו לוגיקה כמו ב-Generate)
         if "```json" in content:
             content = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            content = content.split("```")[1].split("```")[0].strip()
         
-        # כאן אנחנו מחזירים אובייקט עם המפתח trip_plan כי זה מה שהלקוח מצפה ב-Refine
-        return {"trip_plan": json.loads(content)}
+        parsed_json = json.loads(content)
+        
+        # נורמליזציה כדי להבטיח מבנה תקין
+        # אנחנו מעבירים ערכים קיימים כי בעריכה הם לא משתנים לרוב
+        final_plan = normalize_trip_response(parsed_json, current_plan.get("destination", ""), current_plan.get("budget", ""))
+        
+        return {"trip_plan": final_plan}
         
     except Exception as e:
+        print(f"❌ Refine Error: {e}")
         return {"error": str(e)}

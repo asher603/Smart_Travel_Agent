@@ -75,11 +75,8 @@ def create_new_trip(username, initial_data):
 def update_trip_history(trip_id, chat_history):
     if db is None: init_db()
     if db is not None:
-        # רשת ביטחון: לא שומרים היסטוריה ריקה אם כבר יש מידע
         if not chat_history:
-            print("⚠️ Warning: Received empty history update. Skipping to prevent data loss.")
             return False
-
         try:
             db[COLLECTION_TRIPS].update_one(
                 {"_id": ObjectId(trip_id)},
@@ -126,3 +123,14 @@ def get_full_trip(trip_id):
         except:
             pass
     return None
+
+def delete_trip(trip_id):
+    """מחיקת טיול מהדאטה בייס"""
+    if db is None: init_db()
+    if db is not None:
+        try:
+            res = db[COLLECTION_TRIPS].delete_one({"_id": ObjectId(trip_id)})
+            return res.deleted_count > 0
+        except Exception as e:
+            print(f"Delete Error: {e}")
+    return False
