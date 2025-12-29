@@ -123,3 +123,11 @@ class APIService(QObject):
             self._run_async(self.post, ("/ask_question", payload), on_success, on_error)
         else:
             return self.post("/ask_question", payload)
+        
+    def get_weather(self, destination, on_success=None, on_error=None):
+        """ Fetches weather for a destination (No caching) """
+        payload = {"destination": destination}
+        if on_success:
+            self._run_async(self.post, ("/get_weather", payload), on_success, on_error)
+        else:
+            return self.post("/get_weather", payload)

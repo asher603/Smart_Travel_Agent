@@ -5,6 +5,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
+from server.services.weather_service import weather_service
 from dotenv import load_dotenv, find_dotenv
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -145,6 +146,13 @@ async def ask_question(req: ChatRequest):
         return {"answer": response.content}
     except Exception as e:
         return {"answer": f"Error: {str(e)}"}
+
+@app.post("/get_weather")
+async def get_weather(request: dict):
+    # Expects JSON: {"destination": "Paris"}
+    city = request.get("destination", "")
+    desc, temp, icon = weather_service.get_current_weather(city)
+    return {"desc": desc, "temp": temp, "icon": icon}
 
 if __name__ == "__main__":
     uvicorn.run(app, host="127.0.0.1", port=8000)

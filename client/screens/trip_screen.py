@@ -15,7 +15,6 @@ class ImageWorker(QThread):
         self.api = api; self.destination = destination; self.interest = interest
     def run(self):
         try:
-            # הוספנו מילת מפתח "travel" לחיפוש כדי לגוון
             response = self.api.post("/generate_image", {"destination": self.destination, "interest": self.interest})
             self.finished_signal.emit(response.get("image_base64") if response else None)
         except: self.finished_signal.emit(None)
@@ -37,6 +36,19 @@ class StateSaverWorker(QThread):
         self.api = api; self.trip_id = trip_id; self.history = history
     def run(self):
         self.api.post("/update_trip_state", {"trip_id": self.trip_id, "chat_history": self.history})
+
+# --- NEW: Weather Worker ---
+class WeatherWorker(QThread):
+    finished_signal = Signal(dict)
+    def __init__(self, api, destination):
+        super().__init__()
+        self.api = api
+        self.destination = destination
+
+    def run(self):
+        # Calls the new get_weather method in APIService
+        result = self.api.get_weather(self.destination)
+        self.finished_signal.emit(result)
 
 class ImagePopup(QDialog):
     def __init__(self, pixmap, title="Trip Vibe"):
@@ -60,7 +72,7 @@ class TripScreen(QWidget):
         self.username = ""
         self.trip_counter = 0
         self.trip_widgets_map = {}
-        self.image_placeholders = {} # מפה לשמירת המיקום המדויק של התמונה
+        self.image_placeholders = {} 
         self.chat_history_state = [] 
         self.active_workers = []
         self.is_loading_mode = False
@@ -70,9 +82,21 @@ class TripScreen(QWidget):
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0,0,0,0)
         
-        top = QHBoxLayout(); btn_back = QPushButton("🔙 Back to Menu")
+        # --- Top Bar with Weather ---
+        top = QHBoxLayout()
+        btn_back = QPushButton("🔙 Back to Menu")
         btn_back.clicked.connect(self.go_back)
-        top.addWidget(btn_back); top.addStretch(); main_layout.addLayout(top)
+        top.addWidget(btn_back)
+        
+        top.addStretch()
+        
+        # New Weather Label
+        self.weather_lbl = QLabel("")
+        self.weather_lbl.setStyleSheet("font-size: 14px; color: #444; padding: 5px; border: 1px solid #ddd; border-radius: 5px; background: white;")
+        self.weather_lbl.setVisible(False) # Hide until data arrives
+        top.addWidget(self.weather_lbl)
+        
+        main_layout.addLayout(top)
 
         splitter = QSplitter(Qt.Horizontal)
         self.toc_widget = QWidget(); self.toc_widget.setFixedWidth(200)
@@ -112,9 +136,32 @@ class TripScreen(QWidget):
         self.trip_list.clear(); self.chat_history_state = []
         self.trip_counter = 0; self.trip_widgets_map = {}; self.image_placeholders = {}
         self.active_workers.clear()
+        self.weather_lbl.setVisible(False) # Reset weather display
         while self.feed_layout.count() > 1:
             i = self.feed_layout.takeAt(0)
             if i.widget(): i.widget().deleteLater()
+
+    def update_weather_display(self, data):
+        """ Updates the weather label with data from the worker """
+        if not data or "error" in data:
+            self.weather_lbl.setText("Current Weather: Unavailable ⚠️")
+            self.weather_lbl.setVisible(True)
+            return
+
+        desc = data.get("desc", "")
+        temp = data.get("temp", 0)
+        icon = data.get("icon", "")
+        
+        self.weather_lbl.setText(f"Current Weather: {icon} {desc}, {temp}°C")
+        self.weather_lbl.setVisible(True)
+
+    def fetch_weather(self, destination):
+        """ Triggers the background weather fetch """
+        self.weather_lbl.setText("Fetching weather... ⏳")
+        self.weather_lbl.setVisible(True)
+        worker = WeatherWorker(self.api, destination)
+        worker.finished_signal.connect(self.update_weather_display)
+        self.start_worker(worker)
 
     def init_new_trip(self, trip_response, username):
         self.is_loading_mode = False
@@ -123,21 +170,23 @@ class TripScreen(QWidget):
         self.trip_id = trip_response.get("trip_id")
         plan = trip_response
         
-        # שמירת ההקשר
         dest = plan.get("destination", "Unknown")
         self.current_context = f"Dest: {dest}, Budget: {plan.get('budget', '?')}"
         self.current_plan_data = plan
         
         self.render_trip_block("Initial Plan", plan, is_new=True)
-        # יצירת תמונה ראשונית
         self.trigger_image_generation(dest, "travel", self.trip_counter)
+        
+        # --- Fetch Weather ---
+        self.fetch_weather(dest)
 
     def load_existing_trip(self, full_data):
         self.is_loading_mode = True
         self.reset_ui()
         self.trip_id = full_data.get("id")
         self.username = full_data.get("username", "")
-        self.current_context = f"Dest: {full_data.get('destination')}"
+        dest = full_data.get("destination", "")
+        self.current_context = f"Dest: {dest}"
         
         for item in full_data.get("chat_history", []):
             t = item.get("type"); c = item.get("content")
@@ -146,15 +195,17 @@ class TripScreen(QWidget):
                 self.current_plan_data = c["plan"]
                 self.render_trip_block(c["title"], c["plan"], save=False)
             elif t == "image": 
-                # בטעינה, המזהה של הגרסה הוא ה-trip_counter הנוכחי
                 self.render_image_in_placeholder(c, self.trip_counter, save=False)
         self.is_loading_mode = False
+        
+        # --- Fetch Weather ---
+        if dest:
+            self.fetch_weather(dest)
 
     def render_trip_block(self, title, plan_data, is_new=False, save=True):
         self.trip_counter += 1
         ver_id = self.trip_counter
         
-        # 1. יצירת כותרת ברשימה ובפיד
         list_item = QListWidgetItem(f"Ver {ver_id} - {title}")
         self.trip_list.addItem(list_item)
         
@@ -163,13 +214,11 @@ class TripScreen(QWidget):
         self.feed_layout.insertWidget(self.feed_layout.count()-1, lbl_title)
         self.trip_widgets_map[id(list_item)] = lbl_title
 
-        # 2. יצירת מקום שמור (Placeholder) לתמונה - בדיוק מתחת לכותרת!
-        img_placeholder = QVBoxLayout() # לייאוט ריק בינתיים
+        img_placeholder = QVBoxLayout() 
         container = QWidget(); container.setLayout(img_placeholder)
         self.feed_layout.insertWidget(self.feed_layout.count()-1, container)
-        self.image_placeholders[ver_id] = img_placeholder # שומרים רפרנס לפי מספר הגרסה
+        self.image_placeholders[ver_id] = img_placeholder 
 
-        # 3. תוכן הטיול
         content_box = QWidget(); cv = QVBoxLayout(content_box)
         vibe = plan_data.get("analyzed_vibe")
         if vibe: cv.addWidget(QLabel(f"✨ Vibe: {vibe}", styleSheet="color: purple; font-weight:bold;"))
@@ -188,16 +237,14 @@ class TripScreen(QWidget):
             self.save_state_to_server()
 
     def trigger_image_generation(self, destination, interest, ver_id):
-        # שולח בקשה ומעביר את מספר הגרסה (ver_id) כדי שנדע איפה לשתול את התמונה
         worker = ImageWorker(self.api, destination, interest)
         worker.finished_signal.connect(lambda b64: self.render_image_in_placeholder(b64, ver_id, save=True))
         self.start_worker(worker)
 
     def render_image_in_placeholder(self, b64, ver_id, save=True):
         if not b64: return
-        # שולף את הלייאוט המתאים לגרסה הזו
         layout = self.image_placeholders.get(ver_id)
-        if not layout: return # אם לא מצאנו, לא מציגים (או מוסיפים לסוף כגיבוי)
+        if not layout: return
 
         try:
             data = base64.b64decode(b64)
@@ -212,7 +259,6 @@ class TripScreen(QWidget):
             """)
             btn.clicked.connect(lambda: ImagePopup(pix).exec())
             
-            # הוספה לתוך ה-Placeholder ששמרנו מראש
             layout.addWidget(btn)
             
             if save and not self.is_loading_mode:
@@ -231,24 +277,23 @@ class TripScreen(QWidget):
             worker.finished_signal.connect(lambda ans: self.update_bubble(loading, ans))
             self.start_worker(worker)
         else:
-            # Refine Trip
             loading = self.add_bubble("Refining plan...", False)
             
             def on_done(res):
                 if res and "trip_plan" in res:
                     loading.deleteLater()
-                    if self.chat_history_state: self.chat_history_state.pop() # מחיקת הבועה הזמנית
+                    if self.chat_history_state: self.chat_history_state.pop() 
                     
                     new_plan = res["trip_plan"]
                     self.current_plan_data = new_plan
                     
-                    # 1. יצירת הבלוק החדש
                     self.render_trip_block(f"Fix: {msg}", new_plan, is_new=True)
                     
-                    # 2. יצירת תמונה חדשה לגרסה החדשה!
-                    # נשתמש בהוראה של המשתמש כ-Vibe לתמונה
                     dest = new_plan.get("destination", "Trip")
                     self.trigger_image_generation(dest, msg, self.trip_counter)
+                    
+                    # Update weather if destination changed
+                    if dest: self.fetch_weather(dest)
                     
                 else:
                     self.update_bubble(loading, f"Error: {res.get('error', 'Unknown')}")
@@ -264,7 +309,6 @@ class TripScreen(QWidget):
             worker.finished.connect(on_done)
             self.start_worker(worker)
 
-    # ... (add_bubble, update_bubble, save_state_to_server, scroll_down remain similar) ...
     def add_bubble(self, text, is_user, save=True):
         lbl = QLabel(text); lbl.setWordWrap(True)
         lbl.setStyleSheet("padding:10px; border-radius:10px; margin:5px;" + 
