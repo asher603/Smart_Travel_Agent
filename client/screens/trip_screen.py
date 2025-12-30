@@ -1,11 +1,21 @@
 import json
 import base64
-from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
-                               QLineEdit, QComboBox, QScrollArea, QFrame, QSplitter, 
-                               QListWidget, QListWidgetItem, QDialog, QSizePolicy, QLayout)
-from PySide6.QtCore import Qt, QThread, Signal, QByteArray, QTimer, QSize
+from datetime import datetime
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
+    QLineEdit, QComboBox, QScrollArea, QFrame, QSplitter, 
+    QListWidget, QListWidgetItem, QDialog, QSizePolicy, QLayout, 
+    QDateEdit, QStackedWidget  # <--- CRITICAL IMPORTS ADDED HERE
+)
+from PySide6.QtCore import Qt, QThread, Signal, QByteArray, QTimer, QSize, QDate
 from PySide6.QtGui import QPixmap, QImage, QCursor, QPainter, QPainterPath
 from client.components.custom_widgets import Card
+
+# --- Try Importing Charts ---
+try:
+    from client.components.charts import BudgetPieChart
+except ImportError:
+    BudgetPieChart = None
 
 # --- Helper Widget: Clickable Image ---
 class ClickableImage(QLabel):
@@ -55,8 +65,33 @@ class WeatherWorker(QThread):
         self.api = api
         self.destination = destination
     def run(self):
-        result = self.api.get_weather(self.destination)
-        self.finished_signal.emit(result)
+        # Ensure your api_service has get_weather
+        if hasattr(self.api, 'get_weather'):
+            result = self.api.get_weather(self.destination)
+            self.finished_signal.emit(result)
+        else:
+            self.finished_signal.emit({"error": "API missing get_weather"})
+
+class FlightWorker(QThread):
+    finished_signal = Signal(list)
+    def __init__(self, api, origin, dest, date):
+        super().__init__()
+        self.api = api; self.origin = origin; self.dest = dest; self.date = date
+    def run(self):
+        resp = self.api.post("/get_flights", {"from": self.origin, "to": self.dest, "date": self.date})
+        if resp and "flights" in resp:
+            self.finished_signal.emit(resp["flights"])
+        else:
+            self.finished_signal.emit([])
+
+class BudgetWorker(QThread):
+    finished_signal = Signal(dict)
+    def __init__(self, api, budget):
+        super().__init__()
+        self.api = api; self.budget = budget
+    def run(self):
+        resp = self.api.post("/analyze_budget", {"budget": self.budget})
+        self.finished_signal.emit(resp.get("breakdown", {}))
 
 class ImagePopup(QDialog):
     def __init__(self, pixmap, title="Trip Vibe"):
@@ -146,10 +181,9 @@ class TripScreen(QWidget):
         
         self.mode_combo = QComboBox(); self.mode_combo.addItems(["❓ Question", "🛠️ Fix / New Trip"])
         
-        # Send Button (Arrow Icon)
         btn_send = QPushButton("➤")
         btn_send.setCursor(Qt.PointingHandCursor)
-        btn_send.setFixedSize(40, 40) # Square button
+        btn_send.setFixedSize(40, 40)
         btn_send.setStyleSheet("""
             QPushButton { 
                 background-color: #1565c0; 
@@ -201,26 +235,19 @@ class TripScreen(QWidget):
                 else: self.clear_layout(item.layout())
 
     def update_weather_display(self, data):
-        """ Updates only the dynamic part of the weather card """
-        if not self.current_active_ver_id or self.current_active_ver_id not in self.weather_labels:
-            return
-
+        if not self.current_active_ver_id or self.current_active_ver_id not in self.weather_labels: return
         lbl = self.weather_labels[self.current_active_ver_id]
-        
         if not data or "error" in data:
             lbl.setText("Unavailable")
             return
-
         desc = data.get("desc", "Unknown")
         temp = data.get("temp", 0)
         icon = data.get("icon", "")
-        
         lbl.setText(f"{icon} {temp}°C\n{desc}")
 
     def fetch_weather(self, destination):
         if self.current_active_ver_id in self.weather_labels:
             self.weather_labels[self.current_active_ver_id].setText("Loading...")
-            
         worker = WeatherWorker(self.api, destination)
         worker.finished_signal.connect(self.update_weather_display)
         self.start_worker(worker)
@@ -241,77 +268,194 @@ class TripScreen(QWidget):
         self.feed_layout.insertWidget(self.feed_layout.count()-1, lbl_title)
         self.trip_widgets_map[id(list_item)] = lbl_title
 
-        # --- 3. The Dashboard Row ---
+        # --- 3. ROW 1: DASHBOARD ---
         dashboard_layout = QHBoxLayout()
         dashboard_layout.setSpacing(15)
         
         CARD_HEIGHT = 120
         CARD_STYLE = "background-color: white; border-radius: 10px; border: 1px solid #e0e0e0;"
 
-        # -- A. Image Card (Left) --
+        # -- A. Image Card --
         image_card = Card()
         image_card.setFixedSize(CARD_HEIGHT, CARD_HEIGHT) 
-        # Background is white so transparency in corners shows white (or matching parent if transparent)
         image_card.setStyleSheet("background-color: transparent;") 
-        
         ic_layout = QVBoxLayout(image_card)
         ic_layout.setContentsMargins(0, 0, 0, 0)
         ic_layout.setAlignment(Qt.AlignCenter)
-        
         img_placeholder_layout = QVBoxLayout()
         img_placeholder_layout.setAlignment(Qt.AlignCenter)
         ic_layout.addLayout(img_placeholder_layout)
-        
         self.image_placeholders[ver_id] = img_placeholder_layout
         dashboard_layout.addWidget(image_card)
 
-        # -- B. Vibe Card (Center) --
+        # -- B. Vibe Card --
         vibe_card = Card()
         vibe_card.setFixedHeight(CARD_HEIGHT)
         vibe_card.setStyleSheet(CARD_STYLE)
         vc_layout = QVBoxLayout(vibe_card)
         vc_layout.setContentsMargins(15, 15, 15, 15)
         vc_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
-        
         lbl_vibe_title = QLabel("TRIP VIBE")
         lbl_vibe_title.setStyleSheet("font-size: 10px; color: #757575; font-weight: bold; letter-spacing: 1px; border:none; background:transparent;")
-        
         vibe_val = plan_data.get("analyzed_vibe", "General")
         lbl_vibe_text = QLabel(f"✨ {vibe_val}")
         lbl_vibe_text.setStyleSheet("font-size: 18px; font-weight: bold; color: #5e35b1; margin-top: 5px; border:none; background:transparent;")
         lbl_vibe_text.setWordWrap(True)
-        
         vc_layout.addWidget(lbl_vibe_title)
         vc_layout.addWidget(lbl_vibe_text)
         dashboard_layout.addWidget(vibe_card)
 
-        # -- C. Weather Card (Right) --
+        # -- C. Weather Card --
         weather_card = Card()
         weather_card.setFixedHeight(CARD_HEIGHT)
         weather_card.setStyleSheet(CARD_STYLE)
         wc_layout = QVBoxLayout(weather_card)
         wc_layout.setContentsMargins(15, 10, 15, 10)
-        
         dest_name = plan_data.get("destination", "Trip")
         lbl_city = QLabel(dest_name.upper())
         lbl_city.setStyleSheet("font-size: 12px; font-weight: bold; color: #333; border:none; background:transparent;")
         wc_layout.addWidget(lbl_city)
-        
         lbl_weather_stats = QLabel("--")
         lbl_weather_stats.setStyleSheet("font-size: 16px; color: #0277bd; font-weight: bold; border:none; background:transparent;")
         wc_layout.addWidget(lbl_weather_stats)
         self.weather_labels[ver_id] = lbl_weather_stats
-        
         lbl_disclaimer = QLabel("Current weather (not trip time)")
         lbl_disclaimer.setStyleSheet("font-size: 9px; color: #888; font-style: italic; border:none; background:transparent;")
         wc_layout.addWidget(lbl_disclaimer)
-        
         dashboard_layout.addWidget(weather_card)
         
-        # Add to Feed
         self.feed_layout.insertLayout(self.feed_layout.count()-1, dashboard_layout)
 
-        # --- 4. Itinerary Cards ---
+        # --- 4. ROW 2: LOGISTICS (Flights | Budget) ---
+        logistics_layout = QHBoxLayout()
+        logistics_layout.setSpacing(15)
+        ROW2_HEIGHT = 220 
+
+        # -- A. Flight Card --
+        flight_card = Card()
+        flight_card.setFixedHeight(ROW2_HEIGHT)
+        flight_card.setStyleSheet(CARD_STYLE)
+        fc_layout = QVBoxLayout(flight_card)
+        fc_layout.setContentsMargins(15,15,15,15)
+        
+        lbl_flight_header = QLabel("✈️ Find Flights")
+        lbl_flight_header.setStyleSheet("font-weight:bold; font-size:14px; color:#333; border:none;")
+        fc_layout.addWidget(lbl_flight_header)
+
+        # QStackedWidget requires proper import
+        flight_stack = QStackedWidget()
+        
+        # View 1: Inputs (PRE-FILLED)
+        input_widget = QWidget()
+        in_layout = QVBoxLayout(input_widget); in_layout.setContentsMargins(0,0,0,0)
+        
+        origin_input = QLineEdit()
+        pre_origin = plan_data.get("origin", "") 
+        if pre_origin: origin_input.setText(pre_origin)
+        else: origin_input.setPlaceholderText("From (e.g. London)")
+        
+        date_input = QDateEdit()
+        date_input.setCalendarPopup(True)
+        pre_date_str = plan_data.get("start_date", "")
+        
+        # Safe Date Parsing
+        if pre_date_str:
+            try:
+                dt = QDate.fromString(pre_date_str, "yyyy-MM-dd")
+                if dt.isValid(): date_input.setDate(dt)
+                else: date_input.setDate(QDate.currentDate().addDays(30))
+            except: date_input.setDate(QDate.currentDate().addDays(30))
+        else:
+            date_input.setDate(QDate.currentDate().addDays(30))
+        
+        btn_search = QPushButton("Search Flights")
+        btn_search.setStyleSheet("background-color:#1976d2; color:white; padding:8px; border-radius:5px; font-weight:bold;")
+        btn_search.setCursor(Qt.PointingHandCursor)
+        
+        in_layout.addWidget(QLabel("Origin:", styleSheet="border:none; color:#555;"))
+        in_layout.addWidget(origin_input)
+        in_layout.addWidget(QLabel("Departure:", styleSheet="border:none; color:#555;"))
+        in_layout.addWidget(date_input)
+        in_layout.addStretch()
+        in_layout.addWidget(btn_search)
+        
+        flight_stack.addWidget(input_widget)
+
+        # View 2: Results List
+        results_list = QListWidget()
+        results_list.setStyleSheet("border:none; background:transparent;")
+        flight_stack.addWidget(results_list)
+        
+        fc_layout.addWidget(flight_stack)
+
+        def on_search_click():
+            orig = origin_input.text().strip()
+            dest = dest_name
+            date_str = date_input.date().toString("yyyy-MM-dd")
+            if not orig: return
+            btn_search.setText("Searching...")
+            btn_search.setEnabled(False)
+            
+            def on_results(flights):
+                btn_search.setText("Search Flights")
+                btn_search.setEnabled(True)
+                results_list.clear()
+                flight_stack.setCurrentIndex(1)
+                
+                if not flights or "error" in flights:
+                    results_list.addItem("No flights found.")
+                    item_back = QListWidgetItem("⬅️ Try Again")
+                    item_back.setTextAlignment(Qt.AlignCenter)
+                    results_list.addItem(item_back)
+                    return
+                
+                item_back = QListWidgetItem("⬅️ Back to Search")
+                item_back.setFont(Qt.QFont("Arial", 10, Qt.QFont.Bold))
+                results_list.addItem(item_back)
+
+                for f in flights:
+                    txt = f"{f.get('carrier')} | {f.get('dep')} -> {f.get('arr')} | {f.get('price')}"
+                    item = QListWidgetItem(txt)
+                    item.setToolTip(f"{f.get('stops')} stops")
+                    results_list.addItem(item)
+
+            worker = FlightWorker(self.api, orig, dest, date_str)
+            worker.finished_signal.connect(on_results)
+            self.start_worker(worker)
+        
+        def on_list_click(item):
+            if "Back" in item.text() or "Try Again" in item.text():
+                flight_stack.setCurrentIndex(0)
+
+        results_list.itemClicked.connect(on_list_click)
+        btn_search.clicked.connect(on_search_click)
+        
+        logistics_layout.addWidget(flight_card, 1)
+
+        # -- B. Budget Pie Chart --
+        budget_card = Card()
+        budget_card.setFixedHeight(ROW2_HEIGHT)
+        budget_card.setStyleSheet(CARD_STYLE)
+        bc_layout = QVBoxLayout(budget_card)
+        bc_layout.setContentsMargins(10,10,10,10)
+        bc_layout.addWidget(QLabel("💰 Budget Plan (AI)", styleSheet="font-weight:bold; font-size:14px; color:#333; border:none;"))
+        
+        if BudgetPieChart:
+            chart = BudgetPieChart()
+            bc_layout.addWidget(chart)
+            
+            b_total = plan_data.get("budget", "2000")
+            b_worker = BudgetWorker(self.api, b_total)
+            b_worker.finished_signal.connect(chart.update_data)
+            self.start_worker(b_worker)
+        else:
+            bc_layout.addWidget(QLabel("Chart Module Unavailable\n(Install PySide6-Charts)"))
+
+        logistics_layout.addWidget(budget_card, 1)
+        
+        self.feed_layout.insertLayout(self.feed_layout.count()-1, logistics_layout)
+
+        # --- 5. Itinerary Cards ---
         content_box = QWidget(); cv = QVBoxLayout(content_box)
         cv.setContentsMargins(0, 10, 0, 0)
         
@@ -356,56 +500,33 @@ class TripScreen(QWidget):
     def render_image_in_placeholder(self, b64, ver_id, save=True):
         layout = self.image_placeholders.get(ver_id)
         if not layout: return
-
         self.clear_layout(layout)
-
         if not b64:
             layout.addWidget(QLabel("No Image"))
             return
-
         try:
-            # 1. Decode Image
             data = base64.b64decode(b64)
             original_pix = QPixmap.fromImage(QImage.fromData(QByteArray(data)))
-            
-            # 2. Dimensions
             size = 120
             radius = 10
-            
-            # 3. Create a blank transparent pixmap for the rounded result
             rounded_pix = QPixmap(size, size)
             rounded_pix.fill(Qt.transparent)
-            
-            # 4. Initialize Painter
             painter = QPainter(rounded_pix)
             painter.setRenderHint(QPainter.Antialiasing, True)
             painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
-            
-            # 5. Create the Clipping Path (Rounded Rect)
             path = QPainterPath()
             path.addRoundedRect(0, 0, size, size, radius, radius)
             painter.setClipPath(path)
-            
-            # 6. Scale and Center the Image (Cover fit)
-            # We scale the image so the smallest side matches 'size', keeping aspect ratio
             scaled_pix = original_pix.scaled(size, size, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
-            
-            # Calculate offsets to center the image within the 120x120 box
             x_offset = (size - scaled_pix.width()) // 2
             y_offset = (size - scaled_pix.height()) // 2
-            
-            # Draw the image centered
             painter.drawPixmap(x_offset, y_offset, scaled_pix)
             painter.end()
-            
-            # 7. Set to Label
             img_label = ClickableImage()
             img_label.setPixmap(rounded_pix)
             img_label.setFixedSize(size, size)
             img_label.clicked.connect(lambda: ImagePopup(original_pix).exec())
-            
             layout.addWidget(img_label)
-            
             if save and not self.is_loading_mode:
                 self.chat_history_state.append({"type": "image", "content": b64})
                 self.save_state_to_server()
@@ -420,12 +541,16 @@ class TripScreen(QWidget):
         self.username = username
         self.trip_id = trip_response.get("trip_id")
         plan = trip_response
-        
         dest = plan.get("destination", "Unknown")
         self.current_context = f"Dest: {dest}, Budget: {plan.get('budget', '?')}"
         self.current_plan_data = plan
-        
-        self.render_trip_block("Initial Plan", plan, is_new=True)
+        # Add simple error handling to prevent UI freeze
+        try:
+            self.render_trip_block("Initial Plan", plan, is_new=True)
+        except Exception as e:
+            print(f"Error rendering trip: {e}")
+            self.feed_layout.addWidget(QLabel(f"Error rendering trip: {e}"))
+            
         self.trigger_image_generation(dest, "travel", self.trip_counter)
         self.fetch_weather(dest)
 
@@ -436,7 +561,6 @@ class TripScreen(QWidget):
         self.username = full_data.get("username", "")
         dest = full_data.get("destination", "")
         self.current_context = f"Dest: {dest}"
-        
         for item in full_data.get("chat_history", []):
             t = item.get("type"); c = item.get("content")
             if t == "text": self.add_bubble(c, item.get("is_user"), save=False)
@@ -445,11 +569,8 @@ class TripScreen(QWidget):
                 self.render_trip_block(c["title"], c["plan"], save=False)
             elif t == "image": 
                 self.render_image_in_placeholder(c, self.trip_counter, save=False)
-        
         self.is_loading_mode = False
-        
         if dest: self.fetch_weather(dest)
-        
         QTimer.singleShot(150, lambda: self.scroll_area.verticalScrollBar().setValue(0))
 
     # --- Chat & Scroll ---
@@ -457,7 +578,6 @@ class TripScreen(QWidget):
         msg = self.chat_input.text().strip(); 
         if not msg: return
         self.chat_input.clear(); self.add_bubble(msg, True)
-        
         if "Question" in self.mode_combo.currentText():
             loading = self.add_bubble("Thinking...", False)
             worker = ChatWorker(self.api, msg, self.current_context)
@@ -465,28 +585,24 @@ class TripScreen(QWidget):
             self.start_worker(worker)
         else:
             loading = self.add_bubble("Refining plan...", False)
-            
             def on_done(res):
                 if res and "trip_plan" in res:
                     loading.deleteLater()
                     if self.chat_history_state: self.chat_history_state.pop()
                     new_plan = res["trip_plan"]
                     self.current_plan_data = new_plan
-                    
                     self.render_trip_block(f"Fix: {msg}", new_plan, is_new=True)
                     dest = new_plan.get("destination", "Trip")
                     self.trigger_image_generation(dest, msg, self.trip_counter)
                     if dest: self.fetch_weather(dest)
                 else:
                     self.update_bubble(loading, f"Error: {res.get('error', 'Unknown')}")
-
             class RefineWorker(QThread):
                 finished = Signal(dict)
                 def __init__(self, api, plan, instr):
                     super().__init__(); self.api = api; self.plan = plan; self.instr = instr
                 def run(self):
                     self.finished.emit(self.api.post("/refine_trip", {"current_plan": self.plan, "instruction": self.instr}))
-            
             worker = RefineWorker(self.api, self.current_plan_data, msg)
             worker.finished.connect(on_done)
             self.start_worker(worker)

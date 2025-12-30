@@ -8,7 +8,7 @@ from PySide6.QtGui import QIcon
 
 class TripFormScreen(QWidget):
     # סיגנל שמודיע למיין שהטיול נוצר בהצלחה
-    trip_generated = Signal(dict)
+    trip_generated = Signal(object)
 
     def __init__(self, api_service):
         super().__init__()

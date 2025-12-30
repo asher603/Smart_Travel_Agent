@@ -90,7 +90,7 @@ class HistoryScreen(QWidget):
             
             # יצירת פריט רשימה
             item = QListWidgetItem(self.list_widget)
-            item.setSizeHint(QSize(0, 60)) # גובה השורה
+            item.setSizeHint(QSize(0, 80)) # גובה השורה
             
             # יצירת הוידג'ט המותאם
             widget = HistoryItemWidget(display_text, trip_id)
