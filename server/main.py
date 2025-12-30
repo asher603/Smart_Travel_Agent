@@ -1,11 +1,13 @@
 import sys
 import os
 import uvicorn
+import random
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from server.services.weather_service import weather_service
+from server.services.flight_service import flight_service
 from dotenv import load_dotenv, find_dotenv
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -146,6 +148,43 @@ async def ask_question(req: ChatRequest):
         return {"answer": response.content}
     except Exception as e:
         return {"answer": f"Error: {str(e)}"}
+    
+@app.post("/analyze_budget")
+async def analyze_budget(request: dict):
+    """
+    Returns a suggested budget breakdown based on the total budget.
+    In a real app, this would use the LLM. Here we simulate "AI" logic.
+    """
+    try:
+        total_budget_str = str(request.get("budget", "2000"))
+        # Extract number from string (e.g. "$2000" -> 2000)
+        import re
+        nums = re.findall(r'\d+', total_budget_str)
+        total = int(nums[0]) if nums else 2000
+        
+        # Simulated "AI" distribution
+        breakdown = {
+            "Flights": int(total * 0.30),
+            "Accommodation": int(total * 0.40),
+            "Food": int(total * 0.15),
+            "Activities": int(total * 0.10),
+            "Misc": int(total * 0.05)
+        }
+        return {"breakdown": breakdown}
+    except:
+        return {"breakdown": {"General": 100}}
+
+@app.post("/get_flights")
+async def get_flights(request: dict):
+    origin = request.get("from") # e.g. "Tel Aviv"
+    dest = request.get("to")     # e.g. "London"
+    date = request.get("date")   # e.g. "2025-06-01"
+    
+    if not origin or not dest or not date:
+        return {"error": "Missing parameters"}
+
+    results = flight_service.search_flights(origin, dest, date)
+    return {"flights": results}
 
 @app.post("/get_weather")
 async def get_weather(request: dict):
