@@ -2,6 +2,11 @@ import os
 import json
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
+from fastapi import HTTPException 
+
+# --- ייבוא שירות האבטחה שיצרנו קודם ---
+# וודא שהקובץ security_service.py נמצא בתיקיית server/services
+from server.services.security_service import security_guard 
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
@@ -34,7 +39,37 @@ def normalize_trip_response(trip_data, req_dest="Trip", req_budget="?"):
     }
 
 def generate_trip_plan(req):
+    """
+    פונקציה ראשית ליצירת טיול
+    כוללת חומת אש (Firewall) נגד Prompt Injection
+    """
     print(f"🚀 Generating trip to {req.destination}...")
+
+    # ==========================================
+    # 🛡️ SECURITY CHECK / בדיקת אבטחה
+    # ==========================================
+    # אנחנו בודקים כל שדה טקסט חופשי שהמשתמש הזין
+    user_inputs = [req.destination, req.interest]
+    
+    # הוספתי המרה ל-str למקרה שאחד השדות הוא מספר
+    for text_input in user_inputs:
+        if text_input and str(text_input).strip():
+            security_result = security_guard.is_safe(str(text_input))
+            
+            if not security_result["safe"]:
+                print(f"⛔ SECURITY ALERT: Blocked input '{text_input}'")
+                print(f"Reason: {security_result['reason']}")
+                
+                # זריקת שגיאה שתחזור ללקוח ותעצור את התהליך
+                raise HTTPException(
+                    status_code=403, 
+                    detail=f"Security Violation: Request blocked. {security_result['reason']}"
+                )
+    
+    print("✅ Security Check Passed. Proceeding to AI...")
+    # ==========================================
+
+    # מכאן ממשיך הקוד הרגיל שלך...
     vibe = analyze_vibe(req.interest)
     print(f"✨ Vibe Detected: {vibe}")
 
@@ -86,6 +121,16 @@ def generate_trip_plan(req):
 def refine_trip_plan(current_plan, instruction):
     print(f"🛠️ Refining trip with instruction: {instruction}")
     
+    # ==========================================
+    # 🛡️ SECURITY CHECK FOR REFINEMENT
+    # ==========================================
+    # גם בעריכה המשתמש יכול לנסות להזריק הנחיות זדוניות
+    security_result = security_guard.is_safe(instruction)
+    if not security_result["safe"]:
+        print(f"⛔ SECURITY ALERT (Refine): Blocked instruction '{instruction}'")
+        return {"error": f"Security Violation: {security_result['reason']}"}
+    # ==========================================
+
     prompt = f"""
     Current Trip Plan (JSON):
     {json.dumps(current_plan)}
@@ -114,7 +159,6 @@ def refine_trip_plan(current_plan, instruction):
         parsed_json = json.loads(content)
         
         # נורמליזציה כדי להבטיח מבנה תקין
-        # אנחנו מעבירים ערכים קיימים כי בעריכה הם לא משתנים לרוב
         final_plan = normalize_trip_response(parsed_json, current_plan.get("destination", ""), current_plan.get("budget", ""))
         
         return {"trip_plan": final_plan}
