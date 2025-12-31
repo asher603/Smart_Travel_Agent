@@ -5,11 +5,13 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QLineEdit, QComboBox, QScrollArea, QFrame, QSplitter, 
     QListWidget, QListWidgetItem, QDialog, QSizePolicy, QLayout, 
-    QDateEdit, QStackedWidget  # <--- CRITICAL IMPORTS ADDED HERE
+    QDateEdit, QStackedWidget,
+    QMessageBox, QFileDialog # <--- CRITICAL IMPORTS ADDED HERE
 )
 from PySide6.QtCore import Qt, QThread, Signal, QByteArray, QTimer, QSize, QDate
 from PySide6.QtGui import QPixmap, QImage, QCursor, QPainter, QPainterPath
 from client.components.custom_widgets import Card
+from client.pdf_generator import generate_trip_pdf 
 
 # --- Try Importing Charts ---
 try:
@@ -140,11 +142,23 @@ class TripScreen(QWidget):
         # --- Top Bar ---
         top = QHBoxLayout()
         top.setContentsMargins(10, 10, 10, 0)
+        
         btn_back = QPushButton("🔙 Back to Menu")
         btn_back.setCursor(Qt.PointingHandCursor)
         btn_back.clicked.connect(self.go_back)
         top.addWidget(btn_back)
-        top.addStretch()
+        
+        top.addStretch() # דוחף את הכפתורים לצדדים
+        
+        # --- כפתור PDF החדש ---
+        self.btn_pdf = QPushButton("📄 Download PDF") # <--- NEW
+        self.btn_pdf.setCursor(Qt.PointingHandCursor)
+        self.btn_pdf.setStyleSheet("background-color: #2ecc71; color: white; font-weight: bold; padding: 6px 12px; border-radius: 5px;")
+        self.btn_pdf.clicked.connect(self.save_pdf)
+        self.btn_pdf.setVisible(False) # מוסתר עד שיש טיול
+        top.addWidget(self.btn_pdf)
+        # ---------------------
+
         main_layout.addLayout(top)
 
         # --- Splitter Content ---
@@ -544,6 +558,7 @@ class TripScreen(QWidget):
         dest = plan.get("destination", "Unknown")
         self.current_context = f"Dest: {dest}, Budget: {plan.get('budget', '?')}"
         self.current_plan_data = plan
+        self.btn_pdf.setVisible(True)
         # Add simple error handling to prevent UI freeze
         try:
             self.render_trip_block("Initial Plan", plan, is_new=True)
@@ -571,6 +586,8 @@ class TripScreen(QWidget):
                 self.render_image_in_placeholder(c, self.trip_counter, save=False)
         self.is_loading_mode = False
         if dest: self.fetch_weather(dest)
+        if self.current_plan_data: # <--- הוסף את הבדיקה הזו
+            self.btn_pdf.setVisible(True)
         QTimer.singleShot(150, lambda: self.scroll_area.verticalScrollBar().setValue(0))
 
     # --- Chat & Scroll ---
@@ -636,3 +653,70 @@ class TripScreen(QWidget):
     def scroll_to_item(self, item):
         w = self.trip_widgets_map.get(id(item))
         if w: self.scroll_area.ensureWidgetVisible(w)
+        
+    def save_pdf(self):
+        print("🔘 Starting Rich PDF export...")
+
+        if not hasattr(self, 'current_plan_data') or not self.current_plan_data:
+            QMessageBox.warning(self, "No Trip", "No trip data available.")
+            return
+
+        # 1. חילוץ מזג האוויר מהמסך
+        weather_text = "N/A"
+        try:
+            # אנו משתמשים ב-ID של הטיול הנוכחי כדי למצוא את הלייבל הנכון
+            ver_id = self.current_active_ver_id
+            if ver_id in self.weather_labels:
+                weather_text = self.weather_labels[ver_id].text()
+        except Exception as e:
+            print(f"⚠️ Weather extract error: {e}")
+
+        # 2. חילוץ התמונה מהמסך (Snapshot)
+        temp_img_path = "temp_trip_snapshot.png"
+        image_saved = False
+        
+        try:
+            ver_id = self.current_active_ver_id
+            # גישה ל-Layout שמחזיק את התמונה
+            img_layout = self.image_placeholders.get(ver_id)
+            
+            if img_layout and img_layout.count() > 0:
+                # אנו מניחים שהווידג'ט הראשון שם הוא התמונה (ClickableImage)
+                item = img_layout.itemAt(0)
+                widget = item.widget()
+                
+                if widget and hasattr(widget, 'pixmap') and widget.pixmap():
+                    # שמירת ה-Pixmap לקובץ זמני
+                    widget.pixmap().save(temp_img_path, "PNG")
+                    image_saved = True
+                    print("📸 Image snapshot captured!")
+        except Exception as e:
+            print(f"⚠️ Image snapshot error: {e}")
+
+        # 3. שמירת ה-PDF
+        dest_name = self.current_plan_data.get("destination", "Trip")
+        filename, _ = QFileDialog.getSaveFileName(
+            self, "Save Trip PDF", f"Trip_to_{dest_name}.pdf", "PDF Files (*.pdf)"
+        )
+
+        if filename:
+            try:
+                generate_trip_pdf(
+                    self.current_plan_data, 
+                    filename, 
+                    image_path=temp_img_path if image_saved else None,
+                    weather_info=weather_text
+                )
+                
+                QMessageBox.information(self, "Success", "PDF saved successfully! 🚀")
+                
+                # מחיקת הקובץ הזמני
+                if image_saved and os.path.exists(temp_img_path):
+                    os.remove(temp_img_path)
+                    
+                # פתיחה אוטומטית
+                import os
+                os.startfile(filename) if os.name == 'nt' else None
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save PDF:\n{e}")

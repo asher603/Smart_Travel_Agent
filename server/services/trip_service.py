@@ -1,24 +1,53 @@
 import os
 import json
+from dotenv import load_dotenv
 from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_community.tools import DuckDuckGoSearchRun
 from fastapi import HTTPException 
 
-# --- ייבוא שירות האבטחה שיצרנו קודם ---
-# וודא שהקובץ security_service.py נמצא בתיקיית server/services
+# ייבוא שירות האבטחה
 from server.services.security_service import security_guard 
 
+# טעינת משתני סביבה
+load_dotenv()
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
 def get_llm():
+    """
+    יצירת חיבור למודל Groq
+    """
     if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY is missing!")
-    return ChatGroq(temperature=0.7, model_name="llama-3.3-70b-versatile", api_key=GROQ_API_KEY)
+        raise ValueError("GROQ_API_KEY is missing! Please set it in .env file.")
+    
+    # טמפרטורה קצת יותר גבוהה (0.7) כדי לקבל טקסט יותר יצירתי וזורם
+    return ChatGroq(
+        temperature=0.7,
+        model_name="llama-3.3-70b-versatile", 
+        api_key=GROQ_API_KEY
+    )
+
+def get_realtime_events(destination):
+    """
+    מבצע חיפוש באינטרנט אחר אירועים עכשווים ביעד
+    """
+    try:
+        search = DuckDuckGoSearchRun()
+        query = f"Tourist attractions, festivals, and events in {destination} right now"
+        print(f"🕵️ Web Search: '{query}'...")
+        results = search.run(query)
+        return results[:1000] 
+    except Exception as e:
+        print(f"⚠️ Search failed: {e}")
+        return "General tourist info."
 
 def analyze_vibe(interest: str) -> str:
+    """
+    מנתח את סגנון הטיול
+    """
     try:
         llm = get_llm()
-        msg = f"Analyze the following travel interest and return a ONE or TWO word category describing the vibe (e.g., 'Culinary', 'Adventure', 'Relaxing', 'Historical'). Interest: '{interest}'"
+        msg = f"Classify this travel interest into a short category (e.g., 'Culinary', 'Extreme', 'Relaxing', 'History'). Interest: '{interest}'"
         response = llm.invoke([HumanMessage(content=msg)])
         return response.content.strip()
     except Exception as e:
@@ -26,143 +55,152 @@ def analyze_vibe(interest: str) -> str:
         return "General"
 
 def normalize_trip_response(trip_data, req_dest="Trip", req_budget="?"):
-    """מוודא שהמבנה אחיד ללקוח"""
+    """
+    מנרמל את המבנה כדי שהקליינט לא יקרוס
+    """
     if "trip_plan" in trip_data:
         trip_data = trip_data["trip_plan"]
     
     return {
-        "summary": trip_data.get("summary", "No summary available"),
+        "summary": trip_data.get("summary", "A great trip awaits you!"),
         "analyzed_vibe": trip_data.get("analyzed_vibe", "General"),
         "itinerary": trip_data.get("itinerary", []),
         "destination": req_dest,
         "budget": req_budget
     }
 
+def clean_json_response(content):
+    """
+    מנקה סימני Markdown
+    """
+    content = content.strip()
+    if "```json" in content:
+        content = content.split("```json")[1].split("```")[0].strip()
+    elif "```" in content:
+        content = content.split("```")[1].split("```")[0].strip()
+    return content
+
 def generate_trip_plan(req):
     """
-    פונקציה ראשית ליצירת טיול
-    כוללת חומת אש (Firewall) נגד Prompt Injection
+    הפונקציה הראשית
     """
-    print(f"🚀 Generating trip to {req.destination}...")
+    print(f"🚀 Generating DETAILED trip to {req.destination}...")
 
-    # ==========================================
-    # 🛡️ SECURITY CHECK / בדיקת אבטחה
-    # ==========================================
-    # אנחנו בודקים כל שדה טקסט חופשי שהמשתמש הזין
+    # 1. 🛡️ בדיקת אבטחה (ללא travel_style כדי למנוע קריסה)
     user_inputs = [req.destination, req.interest]
-    
-    # הוספתי המרה ל-str למקרה שאחד השדות הוא מספר
-    for text_input in user_inputs:
-        if text_input and str(text_input).strip():
-            security_result = security_guard.is_safe(str(text_input))
-            
-            if not security_result["safe"]:
-                print(f"⛔ SECURITY ALERT: Blocked input '{text_input}'")
-                print(f"Reason: {security_result['reason']}")
-                
-                # זריקת שגיאה שתחזור ללקוח ותעצור את התהליך
+    for text in user_inputs:
+        if text and str(text).strip():
+            security_check = security_guard.is_safe(str(text))
+            if not security_check["safe"]:
+                print(f"⛔ Blocked Input: {text}")
                 raise HTTPException(
                     status_code=403, 
-                    detail=f"Security Violation: Request blocked. {security_result['reason']}"
+                    detail=f"Security Violation: {security_check['reason']}"
                 )
-    
-    print("✅ Security Check Passed. Proceeding to AI...")
-    # ==========================================
+    print("✅ Security Check Passed.")
 
-    # מכאן ממשיך הקוד הרגיל שלך...
+    # 2. 🌍 חיפוש מידע בזמן אמת
+    real_events_context = get_realtime_events(req.destination)
+
+    # 3. ✨ ניתוח אווירה
     vibe = analyze_vibe(req.interest)
-    print(f"✨ Vibe Detected: {vibe}")
+    print(f"✨ Vibe: {vibe}")
 
+    # 4. 🧠 בניית הפרומפט המפורט והפשוט
     prompt = f"""
-    Create a detailed {req.duration}-day trip itinerary for {req.destination}.
-    Budget: {req.budget} {req.currency}.
-    Traveler Interest: {req.interest} (Vibe: {vibe}).
+    Act as a friendly local tour guide. Plan a {req.duration}-day trip to {req.destination}.
     
-    Format the output strictly as JSON with this structure:
+    CLIENT DETAILS:
+    - Budget: {req.budget} {req.currency}
+    - Interests: {req.interest}
+    - Vibe: {vibe}
+    
+    REAL-TIME CONTEXT:
+    {real_events_context}
+    
+    INSTRUCTIONS:
+    1. **Detailed Descriptions:** Do NOT just list places. For every activity, write a full sentence explaining WHAT it is and WHY it's fun.
+    2. **Simple Language:** Use easy-to-read English. Write like you are talking to a friend.
+    3. **Specifics:** Recommend specific dishes to eat at restaurants.
+    
+    OUTPUT FORMAT (Strict JSON):
     {{
-        "summary": "A brief exciting summary of the trip",
+        "summary": "A rich, engaging summary of the trip...",
         "analyzed_vibe": "{vibe}",
         "itinerary": [
             {{
                 "day": 1,
-                "title": "Theme of the day",
-                "activities": ["Activity 1", "Activity 2", "Restaurant recommendation"]
+                "title": "Arrival & Exploration",
+                "activities": [
+                    "Start your morning at [Place Name]. It is famous for [Reason] and you can see [Specific Thing].",
+                    "For lunch, go to [Restaurant Name] and try the delicious [Dish Name].",
+                    "In the afternoon, take a relaxing walk through [Park/Area] to enjoy the atmosphere."
+                ]
             }}
         ]
     }}
-    Do NOT add any text outside the JSON.
+    Response must be ONLY valid JSON.
     """
 
     try:
         llm = get_llm()
         response = llm.invoke([
-            SystemMessage(content="You are an expert travel agent. You output only valid JSON."),
+            SystemMessage(content="You are a helpful travel guide. Output strictly valid JSON."),
             HumanMessage(content=prompt)
         ])
         
-        content = response.content.strip()
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
-            
-        raw_data = json.loads(content)
-        # שימוש בנורמליזציה
-        return normalize_trip_response(raw_data, req.destination, req.budget)
+        # ניקוי ופרסור
+        json_content = clean_json_response(response.content)
+        parsed_data = json.loads(json_content)
+        
+        return normalize_trip_response(parsed_data, req.destination, req.budget)
 
     except Exception as e:
         print(f"❌ Trip Generation Error: {e}")
         return {
-            "summary": "Could not generate trip due to an error.",
+            "summary": "We encountered an error while planning your trip. Please try again.",
             "analyzed_vibe": "Error",
-            "itinerary": []
+            "itinerary": [],
+            "destination": req.destination,
+            "budget": req.budget
         }
 
 def refine_trip_plan(current_plan, instruction):
-    print(f"🛠️ Refining trip with instruction: {instruction}")
-    
-    # ==========================================
-    # 🛡️ SECURITY CHECK FOR REFINEMENT
-    # ==========================================
-    # גם בעריכה המשתמש יכול לנסות להזריק הנחיות זדוניות
-    security_result = security_guard.is_safe(instruction)
-    if not security_result["safe"]:
-        print(f"⛔ SECURITY ALERT (Refine): Blocked instruction '{instruction}'")
-        return {"error": f"Security Violation: {security_result['reason']}"}
-    # ==========================================
+    """
+    תיקון ושיפור הטיול הקיים
+    """
+    print(f"🛠️ Refining trip: '{instruction}'")
+
+    # 1. בדיקת אבטחה
+    security_check = security_guard.is_safe(instruction)
+    if not security_check["safe"]:
+        return {"error": f"Security Violation: {security_check['reason']}"}
 
     prompt = f"""
-    Current Trip Plan (JSON):
+    Current Itinerary (JSON):
     {json.dumps(current_plan)}
 
-    User Instruction: "{instruction}"
+    User Request: "{instruction}"
 
-    Please modify the trip plan according to the instruction. 
-    Keep the exact same JSON structure. Output ONLY JSON.
-    Do NOT add any introductory text.
+    TASK:
+    Update the JSON based on the request. 
+    **IMPORTANT:** Keep the descriptions detailed and simple. Do not shorten them.
+    Output ONLY the updated JSON.
     """
 
     try:
         llm = get_llm()
         response = llm.invoke([
-            SystemMessage(content="You are a JSON editing assistant. Output ONLY valid JSON."),
+            SystemMessage(content="You are a JSON editing assistant."),
             HumanMessage(content=prompt)
         ])
         
-        content = response.content.strip()
-        # ניקוי המחרוזת (אותו לוגיקה כמו ב-Generate)
-        if "```json" in content:
-            content = content.split("```json")[1].split("```")[0].strip()
-        elif "```" in content:
-            content = content.split("```")[1].split("```")[0].strip()
+        json_content = clean_json_response(response.content)
+        parsed_data = json.loads(json_content)
         
-        parsed_json = json.loads(content)
-        
-        # נורמליזציה כדי להבטיח מבנה תקין
-        final_plan = normalize_trip_response(parsed_json, current_plan.get("destination", ""), current_plan.get("budget", ""))
-        
+        final_plan = normalize_trip_response(parsed_data, current_plan.get("destination"), current_plan.get("budget"))
         return {"trip_plan": final_plan}
-        
+
     except Exception as e:
         print(f"❌ Refine Error: {e}")
-        return {"error": str(e)}
+        return {"error": "Failed to update trip. Please try again."}
