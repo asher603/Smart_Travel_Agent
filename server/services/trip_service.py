@@ -1,41 +1,30 @@
 import os
 import json
 from dotenv import load_dotenv
-from langchain_groq import ChatGroq
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_community.tools import DuckDuckGoSearchRun
 from fastapi import HTTPException 
 
-# ייבוא שירות האבטחה
+# ---------------------------------------------------------
+# ייבוא השירותים המיוחדים שלנו
+# ---------------------------------------------------------
+# 1. שירות האבטחה (בודק קלט זדוני)
 from server.services.security_service import security_guard 
+# 2. מנהל המודלים (מנגנון השרידות - Fallback)
+from server.services.llm_factory import llm_manager 
 
-# טעינת משתני סביבה
 load_dotenv()
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-
-def get_llm():
-    """
-    יצירת חיבור למודל Groq
-    """
-    if not GROQ_API_KEY:
-        raise ValueError("GROQ_API_KEY is missing! Please set it in .env file.")
-    
-    # טמפרטורה קצת יותר גבוהה (0.7) כדי לקבל טקסט יותר יצירתי וזורם
-    return ChatGroq(
-        temperature=0.7,
-        model_name="llama-3.3-70b-versatile", 
-        api_key=GROQ_API_KEY
-    )
 
 def get_realtime_events(destination):
     """
-    מבצע חיפוש באינטרנט אחר אירועים עכשווים ביעד
+    מבצע חיפוש באינטרנט אחר אירועים עכשווים ביעד (DuckDuckGo)
     """
     try:
         search = DuckDuckGoSearchRun()
         query = f"Tourist attractions, festivals, and events in {destination} right now"
         print(f"🕵️ Web Search: '{query}'...")
         results = search.run(query)
+        # חותכים את התוצאה שלא תהיה ארוכה מדי
         return results[:1000] 
     except Exception as e:
         print(f"⚠️ Search failed: {e}")
@@ -43,12 +32,13 @@ def get_realtime_events(destination):
 
 def analyze_vibe(interest: str) -> str:
     """
-    מנתח את סגנון הטיול
+    מנתח את סגנון הטיול באמצעות המודל
     """
     try:
-        llm = get_llm()
         msg = f"Classify this travel interest into a short category (e.g., 'Culinary', 'Extreme', 'Relaxing', 'History'). Interest: '{interest}'"
-        response = llm.invoke([HumanMessage(content=msg)])
+        
+        # שימוש במנגנון השרידות (Manager)
+        response = llm_manager.invoke([HumanMessage(content=msg)])
         return response.content.strip()
     except Exception as e:
         print(f"⚠️ Analysis Warning: {e}")
@@ -71,7 +61,7 @@ def normalize_trip_response(trip_data, req_dest="Trip", req_budget="?"):
 
 def clean_json_response(content):
     """
-    מנקה סימני Markdown
+    מנקה סימני Markdown מתשובת המודל
     """
     content = content.strip()
     if "```json" in content:
@@ -82,11 +72,12 @@ def clean_json_response(content):
 
 def generate_trip_plan(req):
     """
-    הפונקציה הראשית
+    הפונקציה הראשית: אבטחה -> חיפוש -> מנגנון שרידות (LLM) -> יצירה מפורטת
     """
     print(f"🚀 Generating DETAILED trip to {req.destination}...")
 
-    # 1. 🛡️ בדיקת אבטחה (ללא travel_style כדי למנוע קריסה)
+    # 1. 🛡️ בדיקת אבטחה
+    # (הסרנו את travel_style כדי למנוע קריסה אם הוא לא קיים)
     user_inputs = [req.destination, req.interest]
     for text in user_inputs:
         if text and str(text).strip():
@@ -106,7 +97,7 @@ def generate_trip_plan(req):
     vibe = analyze_vibe(req.interest)
     print(f"✨ Vibe: {vibe}")
 
-    # 4. 🧠 בניית הפרומפט המפורט והפשוט
+    # 4. 🧠 בניית הפרומפט המפורט והפשוט (Simple Language & Detailed)
     prompt = f"""
     Act as a friendly local tour guide. Plan a {req.duration}-day trip to {req.destination}.
     
@@ -143,8 +134,9 @@ def generate_trip_plan(req):
     """
 
     try:
-        llm = get_llm()
-        response = llm.invoke([
+        # שימוש במנגנון השרידות (Fallback Manager)
+        # הוא ינסה את Groq, ואם ייכשל - יעבור ל-HuggingFace
+        response = llm_manager.invoke([
             SystemMessage(content="You are a helpful travel guide. Output strictly valid JSON."),
             HumanMessage(content=prompt)
         ])
@@ -189,8 +181,8 @@ def refine_trip_plan(current_plan, instruction):
     """
 
     try:
-        llm = get_llm()
-        response = llm.invoke([
+        # שימוש במנגנון השרידות
+        response = llm_manager.invoke([
             SystemMessage(content="You are a JSON editing assistant."),
             HumanMessage(content=prompt)
         ])
