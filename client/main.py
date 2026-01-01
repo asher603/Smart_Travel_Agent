@@ -14,6 +14,7 @@ from client.screens.trip_screen import TripScreen
 from client.screens.history_screen import HistoryScreen
 from client.api_service import APIService
 from client.styles import STYLESHEET
+from client.screens.profile_screen import ProfileScreen
 
 class MainApp(QMainWindow):
     def __init__(self):
@@ -52,6 +53,10 @@ class MainApp(QMainWindow):
         # 4: History
         self.history_screen = HistoryScreen(self.switch_screen, self.api)
         self.container.addWidget(self.history_screen)
+        
+        # 5: Profile
+        self.profile_screen = ProfileScreen(self.switch_screen) # צור את המסך
+        self.container.addWidget(self.profile_screen) # הוסף אותו ל-Stack (זה יהיה אינדקס 5)
 
     def handle_login(self, index, data=None):
         # כשמתחברים, שומרים את שם המשתמש ב-MainApp
