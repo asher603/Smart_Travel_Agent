@@ -5,7 +5,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QPropertyAnimation, QEasingCurve, QPoint, Signal
 from PySide6.QtGui import QColor, QPainter, QBrush
 
-# --- 1. Card Component (Missing in previous version) ---
+# --- 1. Card Component ---
 class Card(QFrame):
     """כרטיס מעוצב עם צללית (משמש את TripScreen)"""
     def __init__(self, shadow=True):
@@ -137,7 +137,7 @@ class ScaleButton(QPushButton):
         self.setStyleSheet(self.default_style + "QPushButton { margin: 0px; }")
         super().mouseReleaseEvent(e)
 
-# --- 5. Modern Switch (Toggle) ---
+# --- 5. Modern Switch (Toggle Button) ---
 class ModernSwitch(QPushButton):
     def __init__(self, active=False):
         super().__init__()

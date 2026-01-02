@@ -44,7 +44,7 @@ def analyze_vibe(interest: str) -> str:
     """ניתוח מהיר של ה-Vibe"""
     try:
         llm = get_groq_fast_model()
-        msg = f"Classify this travel interest into a ONE word category (e.g., 'Culinary', 'Extreme', 'Relaxing'). Interest: '{interest}'"
+        msg = f"Classify this travel interest into a one or two word category (e.g., 'Culinary', 'Extreme', 'Relaxing'). Interest: '{interest}'"
         response = llm.invoke([HumanMessage(content=msg)])
         return response.content.strip()
     except Exception:

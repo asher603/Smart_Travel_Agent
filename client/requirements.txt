@@ -3,3 +3,4 @@ requests
 sounddevice
 numpy
 scipy
+reportlab

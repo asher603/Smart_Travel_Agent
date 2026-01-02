@@ -7,10 +7,11 @@ certifi
 bcrypt
 # --- AI & LangChain ---
 langchain
+langchain-google-genai
 langchain-groq
 langchain-community
 langchain-core
 duckduckgo-search
-# --- Image Generation (החדשים) ---
+# --- Image Generation ---
 huggingface_hub
 pillow
