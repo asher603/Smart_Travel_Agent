@@ -277,16 +277,16 @@ class TripScreen(QWidget):
         self.trip_list.addItem(list_item)
         
         # 2. Main Title
-        lbl_title = QLabel(f"Ver {ver_id}: {title}")
+        lbl_title = QLabel(f"Version {ver_id}: {title}")
         lbl_title.setStyleSheet("font-size: 24px; font-weight: 900; color: #1565c0; margin-top: 30px; margin-bottom: 10px;")
         self.feed_layout.insertWidget(self.feed_layout.count()-1, lbl_title)
         self.trip_widgets_map[id(list_item)] = lbl_title
 
         # --- 3. ROW 1: DASHBOARD ---
         dashboard_layout = QHBoxLayout()
-        dashboard_layout.setSpacing(15)
+        dashboard_layout.setSpacing(10)
         
-        CARD_HEIGHT = 120
+        CARD_HEIGHT = 140
         CARD_STYLE = "background-color: white; border-radius: 10px; border: 1px solid #e0e0e0;"
 
         # -- A. Image Card --
@@ -307,17 +307,17 @@ class TripScreen(QWidget):
         vibe_card.setFixedHeight(CARD_HEIGHT)
         vibe_card.setStyleSheet(CARD_STYLE)
         vc_layout = QVBoxLayout(vibe_card)
-        vc_layout.setContentsMargins(15, 15, 15, 15)
-        vc_layout.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
+        vc_layout.setContentsMargins(5, 5, 5, 5)
+        vc_layout.setAlignment(Qt.AlignVCenter)
         vibe_val = plan_data.get("analyzed_vibe", "General")
-        lbl_vibe_title = QLabel(f"✨ {vibe_val} Vibe")
-        lbl_vibe_title.setStyleSheet("font-size: 10px; color: #757575; font-weight: bold; letter-spacing: 1px; border:none; background:transparent;")
+        lbl_vibe_title = QLabel(f"✨ {vibe_val.upper()} VIBE")
+        lbl_vibe_title.setStyleSheet("font-size: 12px; font-weight: bold; color: #333; border:none; background:transparent;")
         lbl_vibe_text = QLabel(plan_data.get("summary", ""))
-        lbl_vibe_text.setStyleSheet("font-size: 18px; font-weight: bold; color: #5e35b1; margin-top: 5px; border:none; background:transparent;")
+        lbl_vibe_text.setStyleSheet("font-size: 14px; color: #5e35b1; margin-top: 5px; border:none; background:transparent;")
         lbl_vibe_text.setWordWrap(True)
         vc_layout.addWidget(lbl_vibe_title)
         vc_layout.addWidget(lbl_vibe_text)
-        dashboard_layout.addWidget(vibe_card)
+        dashboard_layout.addWidget(vibe_card, 3)
 
         # -- C. Weather Card --
         weather_card = Card()
@@ -336,13 +336,13 @@ class TripScreen(QWidget):
         lbl_disclaimer = QLabel("Current weather (not trip time)")
         lbl_disclaimer.setStyleSheet("font-size: 9px; color: #888; font-style: italic; border:none; background:transparent;")
         wc_layout.addWidget(lbl_disclaimer)
-        dashboard_layout.addWidget(weather_card)
+        dashboard_layout.addWidget(weather_card, 1)
         
         self.feed_layout.insertLayout(self.feed_layout.count()-1, dashboard_layout)
 
         # --- 4. ROW 2: LOGISTICS (Flights | Budget) ---
         logistics_layout = QHBoxLayout()
-        logistics_layout.setSpacing(15)
+        logistics_layout.setSpacing(10)
         ROW2_HEIGHT = 220 
 
         # -- A. Flight Card --
@@ -350,7 +350,7 @@ class TripScreen(QWidget):
         flight_card.setFixedHeight(ROW2_HEIGHT)
         flight_card.setStyleSheet(CARD_STYLE)
         fc_layout = QVBoxLayout(flight_card)
-        fc_layout.setContentsMargins(15,15,15,15)
+        fc_layout.setContentsMargins(10, 10, 10, 10)
         
         lbl_flight_header = QLabel("✈️ Find Flights")
         lbl_flight_header.setStyleSheet("font-weight:bold; font-size:14px; color:#333; border:none;")
