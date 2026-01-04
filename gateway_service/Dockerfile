@@ -1,17 +1,15 @@
 FROM python:3.10-slim
 
-# 1. Setup the environment
 WORKDIR /app
+
 COPY requirements.txt .
+
+# Install dependencies (fastapi, uvicorn, httpx, python-dotenv)
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Copy code into a SUBDIRECTORY to preserve "ai_service" package name
-COPY . ./ai_service
+COPY . .
 
-# 3. Add /app to PYTHONPATH so imports like "from ai_service..." work
-ENV PYTHONPATH=/app
+EXPOSE 8000
 
-EXPOSE 8001
-
-# 4. Run the module using the folder name
-CMD ["uvicorn", "ai_service.main:app", "--host", "0.0.0.0", "--port", "8001"]
+# --- FIX: Ensure this says 8000, NOT 8001 ---
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
