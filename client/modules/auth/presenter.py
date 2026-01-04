@@ -16,7 +16,8 @@ class AuthPresenter:
         try:
             response = self.api.login(username, password)
             
-            if response and response.get("status") == "success":
+            status = response.get("status")
+            if response and status in ["success", "valid"]:
                 print("✅ Login Successful")
                 # Navigate to the next screen using the Event Bus
                 self.bus.publish("login_success", {"username": username})

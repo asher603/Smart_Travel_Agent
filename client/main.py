@@ -1,9 +1,11 @@
 import sys
 import os
 from PySide6.QtWidgets import QApplication
+# Core Services
 from core.api import APIService
 from core.event_bus import EventBus
 from core.shell import Shell
+# Module Imports
 from modules.auth import AuthView, AuthPresenter
 from modules.dashboard import DashboardView, DashboardPresenter, DashboardModel
 from modules.history import HistoryView, HistoryPresenter, HistoryModel
@@ -16,9 +18,7 @@ parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
 def load_stylesheet(app, path):
-    """
-    Reads the .qss file and applies it to the global application.
-    """
+    """Reads the .qss file and applies it to the global application."""
     try:
         with open(path, "r", encoding="utf-8") as f:
             style = f.read()
@@ -29,49 +29,56 @@ def load_stylesheet(app, path):
 def main():
     app = QApplication(sys.argv)
     
-    # 2. Load Styles correctly (Reading the file)
+    # 2. Load Styles
     style_path = os.path.join(current_dir, "assets", "styles.qss")
     load_stylesheet(app, style_path)
     
     # 3. Initialize Core Services
-    # The EventBus is the "Glue" that lets modules talk to the Shell
     event_bus = EventBus()
     api_service = APIService()
     
-    # 4. Initialize the Shell (The Main Window Container)
+    # 4. Initialize the Shell
     shell = Shell(event_bus)
     
-    # 5. Initialize Microfrontends (MVP Wiring)
+    # 5. Initialize Microfrontends
+    # Note: We are registering them in the specific order corresponding to the index
     
-    # --- Module: Auth ---
+    # Index 0: Auth
     auth_view = AuthView() 
-    # The Presenter is created, but we don't need to store it in a variable 
-    # if it attaches itself to the view/signals. However, keeping a reference is good practice.
     auth_presenter = AuthPresenter(auth_view, api_service, event_bus)
-    # Register the view into the Shell's stack (Index 0)
     shell.register_module(0, auth_view)
 
-    # --- Module: Dashboard ---
+    # Index 1: Dashboard
     dashboard_view = DashboardView()
     dashboard_presenter = DashboardPresenter(dashboard_view, DashboardModel(), event_bus)
     shell.register_module(1, dashboard_view)
 
-    # --- Module: History ---
+    # Index 2: History
     history_view = HistoryView()
     history_presenter = HistoryPresenter(history_view, HistoryModel(), api_service, event_bus)
     shell.register_module(2, history_view)
     
-    # --- Module: Trip Form ---
+    # Index 3: Trip Form
     trip_form_view = TripFormView()
     trip_form_presenter = TripFormPresenter(trip_form_view, TripFormModel(), api_service, event_bus)
     shell.register_module(3, trip_form_view)
 
-    # --- Module: Trip Viewer ---
+    # Index 4: Trip Viewer
     trip_viewer_view = TripViewerView()
     trip_viewer_presenter = TripViewerPresenter(trip_viewer_view, TripViewerModel(), api_service, event_bus)
     shell.register_module(4, trip_viewer_view)
 
-    # 6. Launch
+    # 6. Global Navigation Logic
+    def on_login_success(data):
+        print(f"🎉 Login Success: {data.get('username')}")
+
+        # The Shell is listening for "NAVIGATE". We tell it to go to Index 1 (Dashboard).
+        event_bus.publish("NAVIGATE", {"index": 1})
+
+    # Subscribe to the login event
+    event_bus.subscribe("login_success", on_login_success)
+
+    # 7. Launch
     shell.show()
     sys.exit(app.exec())
 
