@@ -1,0 +1,112 @@
+/* --- רקע כללי לאפליקציה (גרדיאנט יוקרתי) --- */
+QMainWindow, QWidget#MainContainer {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:1, stop:0 #141E30, stop:1 #243B55);
+    font-family: 'Segoe UI', sans-serif;
+}
+
+/* --- כרטיסיות (Cards) - המקום שבו התוכן יושב --- */
+QFrame#Card {
+    background-color: #ffffff;
+    border-radius: 20px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+/* --- כותרות --- */
+QLabel#Header {
+    color: #ffffff;
+    font-size: 28px;
+    font-weight: 900;
+    padding-bottom: 10px;
+    background: transparent;
+}
+
+QLabel#SubHeader {
+    color: #37474f;
+    font-size: 20px;
+    font-weight: bold;
+    background: transparent;
+}
+
+QLabel {
+    color: #455a64;
+    font-size: 14px;
+    font-weight: 600;
+    background: transparent;
+}
+
+/* --- שדות קלט (Inputs) --- */
+QLineEdit, QComboBox, QDateEdit, QSpinBox, QPlainTextEdit {
+    background-color: #f4f6f8;
+    border: 1px solid #cfd8dc;
+    border-radius: 10px;
+    padding: 10px;
+    font-size: 14px;
+    color: #263238;
+}
+
+QLineEdit:focus, QComboBox:focus, QDateEdit:focus, QPlainTextEdit:focus {
+    background-color: #ffffff;
+    border: 2px solid #3498db;
+}
+
+/* --- לוח שנה (Calendar Widget) --- */
+QCalendarWidget QToolButton {
+    color: black;
+    icon-size: 20px;
+    background-color: transparent;
+}
+QCalendarWidget QMenu {
+    background-color: white;
+    color: black;
+}
+QCalendarWidget QSpinBox {
+    background-color: white;
+    color: black;
+}
+
+/* --- כפתור ראשי (Gradient) --- */
+QPushButton#PrimaryBtn {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #3498db, stop:1 #2980b9);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    padding: 12px 24px;
+    font-size: 16px;
+    font-weight: bold;
+}
+QPushButton#PrimaryBtn:hover {
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0, stop:0 #2980b9, stop:1 #3498db);
+    margin-top: -2px; /* אפקט לחיצה */
+}
+
+/* --- כפתור משני --- */
+QPushButton#SecondaryBtn {
+    background-color: transparent;
+    border: 2px solid #bdc3c7;
+    color: #bdc3c7;
+    border-radius: 12px;
+    padding: 10px 20px;
+    font-weight: bold;
+}
+QPushButton#SecondaryBtn:hover {
+    border-color: #ffffff;
+    color: #ffffff;
+}
+
+/* --- רשימות --- */
+QListWidget {
+    background-color: #ffffff;
+    border-radius: 10px;
+    border: 1px solid #eceff1;
+    padding: 5px;
+}
+QListWidget::item {
+    color: #333;
+    padding: 10px;
+    border-bottom: 1px solid #f0f0f0;
+}
+QListWidget::item:selected {
+    background-color: #e3f2fd;
+    color: #1565c0;
+    border-radius: 8px;
+}

@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+pymongo
+dnspython
+certifi
+pydantic
+pydantic-settings
+python-dotenv
+bcrypt

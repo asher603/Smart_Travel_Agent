@@ -1,0 +1,77 @@
+services:
+  # -----------------------------
+  # 1. DATABASE (MongoDB)
+  # -----------------------------
+  mongo:
+    image: mongo:latest
+    container_name: travel_mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  # -----------------------------
+  # 2. DATA SERVICE (Event Store)
+  # -----------------------------
+  data_service:
+    build: 
+      context: ./data_service
+    container_name: travel_data_service
+    ports:
+      - "8002:8002"
+    environment:
+      - MONGODB_URI=mongodb://mongo:27017
+      - DB_NAME=smart_travel_events
+    depends_on:
+      - mongo
+
+  # -----------------------------
+  # 3. AI SERVICE (The Brain)
+  # -----------------------------
+  ai_service:
+    build:
+      context: ./ai_service
+    container_name: travel_ai_service
+    ports:
+      - "8001:8001"
+    environment:
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+    # Note: No 'depends_on' needed, it's stateless
+
+  # -----------------------------
+  # 4. APP SERVER (MVC Logic)
+  # -----------------------------
+  app_server:
+    build:
+      context: ./server
+    container_name: travel_app_server
+    ports:
+      - "8003:8003"
+    environment:
+      - DATA_SERVICE_URL=http://data_service:8002
+      - AI_SERVICE_URL=http://ai_service:8001
+      - AMADEUS_API_KEY=${AMADEUS_API_KEY}
+      - AMADEUS_SECRET=${AMADEUS_SECRET}
+    depends_on:
+      - data_service
+      - ai_service
+
+  # -----------------------------
+  # 5. GATEWAY (The Entry Point)
+  # -----------------------------
+  gateway:
+    build:
+      context: ./gateway_service
+    container_name: travel_gateway
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_SERVER_URL=http://app_server:8003
+      - AI_SERVICE_URL=http://ai_service:8001
+    depends_on:
+      - app_server
+
+volumes:
+  mongo_data:

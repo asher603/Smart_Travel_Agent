@@ -5,6 +5,9 @@ pymongo
 python-dotenv
 certifi
 bcrypt
+httpx
+pydantic
+pydantic-settings
 # --- AI & LangChain ---
 langchain
 langchain-google-genai

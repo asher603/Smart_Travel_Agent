@@ -42,7 +42,7 @@ class WeatherService:
         code = weather_data.get('weathercode', -1)
         temp = weather_data.get('temperature', 0.0)
 
-        # Logic converted from your C# file:
+        # Weather Status Mapping
         if code == 0:
             return "Clear", temp, "☀️"
         elif code in [1, 2, 3]:

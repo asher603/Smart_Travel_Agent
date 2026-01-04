@@ -1,12 +1,12 @@
 import requests
 import datetime
-import os
+from server.core.config import settings
 
 class FlightService:
     def __init__(self):
         self.base_url = "https://test.api.amadeus.com"
-        self.client_id = os.getenv("AMADEUS_API_KEY")
-        self.client_secret = os.getenv("AMADEUS_SECRET")
+        self.client_id = settings.AMADEUS_API_KEY
+        self.client_secret = settings.AMADEUS_SECRET
         self._token = None
         self._token_expiry = datetime.datetime.now()
 

@@ -1,93 +1,79 @@
 import sys
 import os
+from PySide6.QtWidgets import QApplication
+from core.api import APIService
+from core.event_bus import EventBus
+from core.shell import Shell
+from modules.auth import AuthView, AuthPresenter
+from modules.dashboard import DashboardView, DashboardPresenter, DashboardModel
+from modules.history import HistoryView, HistoryPresenter, HistoryModel
+from modules.trip_form import TripFormView, TripFormPresenter, TripFormModel
+from modules.trip_viewer import TripViewerView, TripViewerPresenter, TripViewerModel
 
-# --- תיקון נתיבים קריטי ---
+# 1. Fix path to allow importing from root
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 sys.path.append(parent_dir)
 
-from PySide6.QtWidgets import QApplication, QMainWindow, QStackedWidget
-from client.screens.login_screen import LoginScreen
-from client.screens.menu_screen import MenuScreen
-from client.screens.trip_form_screen import TripFormScreen
-from client.screens.trip_screen import TripScreen
-from client.screens.history_screen import HistoryScreen
-from client.api_service import APIService
-from client.styles import STYLESHEET
-from client.screens.profile_screen import ProfileScreen
+def load_stylesheet(app, path):
+    """
+    Reads the .qss file and applies it to the global application.
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            style = f.read()
+            app.setStyleSheet(style)
+    except FileNotFoundError:
+        print(f"Warning: Stylesheet not found at {path}")
 
-class MainApp(QMainWindow):
-    def __init__(self):
-        super().__init__()
-        self.setWindowTitle("Smart Travel Agent ✈️")
-        self.setGeometry(100, 100, 1200, 800)
-        self.setStyleSheet(STYLESHEET)
-        
-        self.api = APIService()
-        self.username = "Guest"
+def main():
+    app = QApplication(sys.argv)
+    
+    # 2. Load Styles correctly (Reading the file)
+    style_path = os.path.join(current_dir, "assets", "styles.qss")
+    load_stylesheet(app, style_path)
+    
+    # 3. Initialize Core Services
+    # The EventBus is the "Glue" that lets modules talk to the Shell
+    event_bus = EventBus()
+    api_service = APIService()
+    
+    # 4. Initialize the Shell (The Main Window Container)
+    shell = Shell(event_bus)
+    
+    # 5. Initialize Microfrontends (MVP Wiring)
+    
+    # --- Module: Auth ---
+    auth_view = AuthView() 
+    # The Presenter is created, but we don't need to store it in a variable 
+    # if it attaches itself to the view/signals. However, keeping a reference is good practice.
+    auth_presenter = AuthPresenter(auth_view, api_service, event_bus)
+    # Register the view into the Shell's stack (Index 0)
+    shell.register_module(0, auth_view)
 
-        self.container = QStackedWidget()
-        self.container.setObjectName("MainContainer")
-        self.setCentralWidget(self.container)
+    # --- Module: Dashboard ---
+    dashboard_view = DashboardView()
+    dashboard_presenter = DashboardPresenter(dashboard_view, DashboardModel(), event_bus)
+    shell.register_module(1, dashboard_view)
 
-        self.init_screens()
+    # --- Module: History ---
+    history_view = HistoryView()
+    history_presenter = HistoryPresenter(history_view, HistoryModel(), api_service, event_bus)
+    shell.register_module(2, history_view)
+    
+    # --- Module: Trip Form ---
+    trip_form_view = TripFormView()
+    trip_form_presenter = TripFormPresenter(trip_form_view, TripFormModel(), api_service, event_bus)
+    shell.register_module(3, trip_form_view)
 
-    def init_screens(self):
-        # 0: Login
-        self.login_screen = LoginScreen(self.handle_login, self.api)
-        self.container.addWidget(self.login_screen)
+    # --- Module: Trip Viewer ---
+    trip_viewer_view = TripViewerView()
+    trip_viewer_presenter = TripViewerPresenter(trip_viewer_view, TripViewerModel(), api_service, event_bus)
+    shell.register_module(4, trip_viewer_view)
 
-        # 1: Menu
-        self.menu_screen = MenuScreen(self.switch_screen)
-        self.container.addWidget(self.menu_screen)
-
-        # 2: Form
-        self.trip_form_screen = TripFormScreen(self.api)
-        self.trip_form_screen.trip_generated.connect(self.handle_trip_generated)
-        self.container.addWidget(self.trip_form_screen)
-
-        # 3: Trip Results
-        self.trip_screen = TripScreen(self.switch_screen, self.api)
-        self.container.addWidget(self.trip_screen)
-
-        # 4: History
-        self.history_screen = HistoryScreen(self.switch_screen, self.api)
-        self.container.addWidget(self.history_screen)
-        
-        # 5: Profile
-        self.profile_screen = ProfileScreen(self.switch_screen) # צור את המסך
-        self.container.addWidget(self.profile_screen) # הוסף אותו ל-Stack (זה יהיה אינדקס 5)
-
-    def handle_login(self, index, data=None):
-        # כשמתחברים, שומרים את שם המשתמש ב-MainApp
-        if isinstance(data, str):
-            self.username = data
-        elif isinstance(data, dict) and "username" in data:
-            self.username = data["username"]
-        
-        # מעדכנים את מסך התפריט
-        self.menu_screen.set_user(self.username)
-        self.switch_screen(1)
-
-    def switch_screen(self, index, data=None, mode=None):
-        # --- עדכונים לפני מעבר מסך ---
-        if index == 2: # כניסה לטופס
-            self.trip_form_screen.username = self.username
-            
-        if index == 4: # כניסה להיסטוריה
-            self.history_screen.load_history(self.username)
-            
-        if index == 3 and mode == "load" and data: # טעינה מהיסטוריה
-            self.trip_screen.load_existing_trip(data)
-
-        self.container.setCurrentIndex(index)
-
-    def handle_trip_generated(self, trip_data):
-        self.trip_screen.init_new_trip(trip_data, self.username)
-        self.switch_screen(3)
+    # 6. Launch
+    shell.show()
+    sys.exit(app.exec())
 
 if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = MainApp()
-    window.show()
-    sys.exit(app.exec())
+    main()
