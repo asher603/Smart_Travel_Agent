@@ -1,1 +1,17 @@
-http://localhost:8000/docs
+Debugging Instructions:
+
+Open 2 terminals, with your virtual environment (venv) active.
+
+Terminal 1 - Docker Engine:
+    Activation:
+        'docker-compose up --build'
+    Exit:
+        Ctrl + C
+    Termination:
+        'docker-compose down'
+    Verify Active:
+        http://localhost:8000/docs in your browser
+
+Terminal 2 - Client Screens:
+    Activation:
+        python client/main.py
