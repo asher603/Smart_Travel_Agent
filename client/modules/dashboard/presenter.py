@@ -20,12 +20,12 @@ class DashboardPresenter:
         self.bus.publish("NAVIGATE", {"index": 0})
 
     def on_plan_trip(self):
-        # Index 2 = Trip Form Screen
-        self.bus.publish("NAVIGATE", {"index": 2, "username": self.model.username})
+        # Index 3 = Trip Form Screen
+        self.bus.publish("NAVIGATE", {"index": 3, "username": self.model.username})
 
     def on_history(self):
-        # Index 4 = History Screen
-        self.bus.publish("NAVIGATE", {"index": 4, "username": self.model.username})
+        # Index 2 = History Screen
+        self.bus.publish("NAVIGATE", {"index": 2, "username": self.model.username})
 
     def on_profile(self):
         # Index 5 = Profile Screen

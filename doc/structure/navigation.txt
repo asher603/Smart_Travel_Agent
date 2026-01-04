@@ -1,0 +1,11 @@
+Screens Navigation Indexing:
+    
+    Index 0: Auth (Login)
+    # Index 1: Dashboard
+    # Index 2: History
+    # Index 3: Trip Form
+    # Index 4: Trip Viewer (AI Chat)
+    # Index 5: Profile      # Not Implemented Yet.
+
+Navigation Code:
+    self.bus.publish("NAVIGATE", {"index": 0})  # this line navigates to Auth screen

@@ -9,9 +9,6 @@ class APIService:
         try:
             url = f"{self.base_url}/auth/login"
             response = requests.post(url, json={"username": username, "password": password})
-            
-            # --- DEBUG PRINT ---
-            print(f"DEBUG API RESPONSE: {response.status_code} - {response.text}")
 
             if response.status_code == 200:
                 return response.json()
