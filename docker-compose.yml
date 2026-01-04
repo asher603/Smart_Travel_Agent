@@ -71,4 +71,4 @@ services:
     environment:
       # Connection string injected from .env
       - MONGODB_URI=${MONGODB_URI}
-      - DATABASE_NAME=travel_db
+      - DATABASE_NAME=smart_travel_agent_db
