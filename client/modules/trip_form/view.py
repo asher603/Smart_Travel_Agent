@@ -183,3 +183,7 @@ class TripFormView(QWidget):
         else:
             self.btn_generate.setText("✨ Generate Trip")
             self.btn_generate.setEnabled(True)
+
+    def show_message(self, title, message):
+        """Displays a popup message (Success or Error)"""
+        QMessageBox.warning(self, title, message)

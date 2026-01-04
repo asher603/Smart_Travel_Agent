@@ -21,13 +21,9 @@ app.include_router(auth_controller.router)
 app.include_router(trip_controller.router)
 app.include_router(services_controller.router)
 
-@app.get("/health")
-def health_check():
-    return {"status": "active", "service": "app_server"}
-
 @app.get("/")
 def root():
     return {"message": "Travel App Server Running"}
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8003, reload=True)
+    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
