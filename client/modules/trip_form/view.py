@@ -1,5 +1,4 @@
 import random
-from datetime import date
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QLabel, QFrame, QHBoxLayout, 
     QDateEdit, QComboBox, QPlainTextEdit, QMessageBox, 
@@ -8,28 +7,53 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QDate
 from PySide6.QtGui import QColor
 
-# Use your custom components
-from components import FloatingParticle, ModernInput, ScaleButton
+# Imports from your custom components
+from components.floating_particle import FloatingParticle
+from components.modern_input import ModernInput
+from components.scale_button import ScaleButton
 
 class TripFormView(QWidget):
-    generate_requested = Signal(dict) # Sends form data to presenter
+    generate_requested = Signal(dict)
     back_requested = Signal()
 
     def __init__(self):
         super().__init__()
+        self.resize(1100, 800) # Ensure window is big enough
         self.init_ui()
         self.create_particles()
 
     def create_particles(self):
         for _ in range(20):
             size = random.randint(5, 15)
-            x = random.randint(0, 1000)
+            x = random.randint(0, 1100)
             y = random.randint(0, 800)
             p = FloatingParticle(self, x, y, size)
             p.lower()
 
     def init_ui(self):
-        self.setStyleSheet("background: #0F172A; font-family: 'Segoe UI'; color: white;")
+        # 1. Global Styles
+        self.setStyleSheet("""
+            QWidget { background: #0F172A; font-family: 'Segoe UI'; color: white; }
+            
+            /* Target ONLY the main card */
+            #formCard {
+                background-color: white;
+                border-radius: 20px;
+            }
+
+            /* Fix Date Picker & Dropdown Visibility */
+            QDateEdit, QComboBox {
+                background: #F8FAFC; border: 2px solid #E2E8F0; border-radius: 12px;
+                color: #1E293B; padding: 5px 10px; font-size: 14px; min-height: 45px;
+            }
+            QDateEdit::drop-down, QComboBox::drop-down { border: none; }
+            QDateEdit::down-arrow, QComboBox::down-arrow { 
+                image: none; border-top: 6px solid #64748B; border-left: 5px solid transparent; border-right: 5px solid transparent; margin-right: 10px; 
+            }
+            
+            /* Calendar Popup Styling */
+            QCalendarWidget QWidget { background-color: white; color: black; }
+        """)
         
         main_layout = QVBoxLayout(self)
         main_layout.setAlignment(Qt.AlignCenter)
@@ -37,54 +61,50 @@ class TripFormView(QWidget):
 
         # --- Header ---
         header = QLabel("Plan Your Next Adventure ✈️")
-        header.setStyleSheet("font-size: 32px; font-weight: bold; color: white; margin-bottom: 20px;")
+        header.setStyleSheet("font-size: 32px; font-weight: bold; color: white; margin-bottom: 20px; background: transparent;")
         header.setAlignment(Qt.AlignCenter)
         main_layout.addWidget(header)
 
         # --- Card Container ---
         card = QFrame()
-        card.setStyleSheet("""
-            QFrame {
-                background-color: white;
-                border-radius: 20px;
-            }
-        """)
-        card.setFixedWidth(550)
+        card.setObjectName("formCard") # ID for CSS targeting
+        card.setFixedWidth(650) # Wider card
         
-        # Shadow
         shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(30); shadow.setColor(QColor(0,0,0,80)); shadow.setOffset(0, 10)
+        shadow.setBlurRadius(40); shadow.setColor(QColor(0,0,0,80)); shadow.setOffset(0, 10)
         card.setGraphicsEffect(shadow)
 
         card_layout = QVBoxLayout(card)
-        card_layout.setSpacing(15)
-        card_layout.setContentsMargins(40, 40, 40, 40)
+        card_layout.setSpacing(25) # More space between rows
+        card_layout.setContentsMargins(50, 50, 50, 50)
 
         # --- Inputs ---
         self.input_dest = ModernInput("Destination (e.g. Paris)", icon_char="📍")
         self.input_origin = ModernInput("Origin (e.g. New York)", icon_char="🏠")
         
-        # Date Row
+        # Row: Dates
         date_layout = QHBoxLayout()
+        date_layout.setSpacing(20)
+        
         self.date_start = self._create_date_edit()
         self.date_end = self._create_date_edit(offset_days=7)
-        date_layout.addWidget(self._create_label("Start:", "black"))
+        
+        date_layout.addWidget(self._create_label("Start:", "#334155"))
         date_layout.addWidget(self.date_start)
-        date_layout.addWidget(self._create_label("End:", "black"))
+        date_layout.addWidget(self._create_label("End:", "#334155"))
         date_layout.addWidget(self.date_end)
 
-        # Budget Row
+        # Row: Budget & Currency
         budget_layout = QHBoxLayout()
+        budget_layout.setSpacing(20)
+        
         self.input_budget = ModernInput("Budget", icon_char="💰")
-        self.input_budget.input_field.setFixedWidth(150)
+        # Ensure budget input doesn't squash
+        self.input_budget.setMinimumWidth(200) 
         
         self.combo_currency = QComboBox()
         self.combo_currency.addItems(["USD", "EUR", "ILS", "GBP"])
-        self.combo_currency.setFixedHeight(50)
-        self.combo_currency.setStyleSheet("""
-            QComboBox { border: 2px solid #E2E8F0; border-radius: 12px; padding: 5px; color: #1E293B; }
-            QComboBox::drop-down { border: none; }
-        """)
+        self.combo_currency.setCursor(Qt.PointingHandCursor)
         
         budget_layout.addWidget(self.input_budget)
         budget_layout.addWidget(self.combo_currency)
@@ -92,11 +112,11 @@ class TripFormView(QWidget):
         # Interests
         self.input_interests = QPlainTextEdit()
         self.input_interests.setPlaceholderText("Interests (Museums, Food, Hiking...)")
-        self.input_interests.setFixedHeight(80)
+        self.input_interests.setFixedHeight(100)
         self.input_interests.setStyleSheet("""
             QPlainTextEdit {
                 background: #F8FAFC; border: 2px solid #E2E8F0; border-radius: 12px;
-                padding: 10px; font-size: 14px; color: #1E293B;
+                padding: 15px; font-size: 14px; color: #1E293B; font-family: 'Segoe UI';
             }
             QPlainTextEdit:focus { border: 2px solid #3B82F6; background: white; }
         """)
@@ -108,17 +128,24 @@ class TripFormView(QWidget):
         self.btn_back = ScaleButton("Back to Dashboard", "#64748B", "#475569")
         self.btn_back.clicked.connect(self.back_requested.emit)
 
-        # Assembly
+        # --- Adding to Layout (with Labels) ---
         card_layout.addWidget(self._create_label("Where to?", "#334155"))
         card_layout.addWidget(self.input_dest)
+        
+        card_layout.addWidget(self._create_label("From where?", "#334155"))
         card_layout.addWidget(self.input_origin)
+        
         card_layout.addSpacing(5)
         card_layout.addLayout(date_layout)
+        
         card_layout.addSpacing(5)
         card_layout.addWidget(self._create_label("Budget", "#334155"))
         card_layout.addLayout(budget_layout)
+        
+        card_layout.addWidget(self._create_label("Preferences", "#334155"))
         card_layout.addWidget(self.input_interests)
-        card_layout.addSpacing(10)
+        
+        card_layout.addSpacing(20)
         card_layout.addWidget(self.btn_generate)
         card_layout.addWidget(self.btn_back)
 
@@ -129,11 +156,7 @@ class TripFormView(QWidget):
         de.setCalendarPopup(True)
         de.setDate(QDate.currentDate().addDays(offset_days))
         de.setDisplayFormat("dd/MM/yyyy")
-        de.setFixedHeight(45)
-        de.setStyleSheet("""
-            QDateEdit { background: #F8FAFC; border: 2px solid #E2E8F0; border-radius: 10px; color: #1E293B; padding-left: 10px;}
-            QDateEdit::drop-down { border: none; }
-        """)
+        de.setCursor(Qt.PointingHandCursor)
         return de
 
     def _create_label(self, text, color):
@@ -148,8 +171,8 @@ class TripFormView(QWidget):
             "budget": self.input_budget.text(),
             "currency": self.combo_currency.currentText(),
             "interests": self.input_interests.toPlainText(),
-            "start_date": self.date_start.date().toPython(),
-            "end_date": self.date_end.date().toPython()
+            "start_date": self.date_start.date().toString("yyyy-MM-dd"),
+            "end_date": self.date_end.date().toString("yyyy-MM-dd")
         }
         self.generate_requested.emit(data)
 

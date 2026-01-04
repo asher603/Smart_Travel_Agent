@@ -1,48 +1,52 @@
-from PySide6.QtWidgets import QMessageBox
+from PySide6.QtCore import QObject
 
-class HistoryPresenter:
+class HistoryPresenter(QObject):
     def __init__(self, view, model, api_service, event_bus):
+        super().__init__()
         self.view = view
         self.model = model
-        self.api = api_service
+        self.service = api_service
         self.bus = event_bus
+        self.current_user = None
 
-        self.view.back_requested.connect(self.go_back)
-        self.view.delete_requested.connect(self.handle_delete)
-        self.view.trip_selected.connect(self.handle_select)
+        # --- Connect View Signals ---
+        self.view.back_signal.connect(self.go_back)
+        self.view.trip_clicked_signal.connect(self.load_trip)
+        self.view.delete_trip_signal.connect(self.delete_trip)
 
-    def load_data(self, username):
-        self.model.username = username
-        self.api.get_history_summary(username, self.on_load_success, self.on_error)
+        # --- Connect Bus Signals ---
+        self.bus.subscribe("login_success", self.on_user_login)
 
-    def on_load_success(self, response):
-        trips = response.get("trips", [])
-        self.model.trips = trips
-        self.view.render_list(trips)
+    def on_user_login(self, data):
+        """Called when user logs in via Auth module"""
+        self.current_user = data.get("username")
+        self.refresh_list()
 
-    def handle_delete(self, trip_id):
-        confirm = QMessageBox.question(self.view, "Delete", "Are you sure?", QMessageBox.Yes | QMessageBox.No)
-        if confirm == QMessageBox.Yes:
-            self.api.delete_trip(trip_id, 
-                success_cb=lambda r: self.load_data(self.model.username), 
-                error_cb=self.on_error
-            )
+    def refresh_list(self):
+        if self.current_user:
+            print(f"🔄 History: Fetching data for {self.current_user}")
+            trips = self.model.get_history(self.service, self.current_user)
+            self.view.update_list(trips)
 
-    def handle_select(self, trip_id):
-        # Fetch full details then navigate
-        self.api.get_full_trip(trip_id, self.on_trip_details_loaded, self.on_error)
+    def load_trip(self, trip_id):
+        print(f"📂 History: Loading trip {trip_id}")
+        # Fetch full details
+        trip_data = self.model.get_trip_details(self.service, trip_id)
+        if trip_data:
+            # Navigate to Trip Viewer (Index 4) and pass data
+            self.bus.publish("NAVIGATE", {"index": 4})
+            self.bus.publish("LOAD_TRIP", trip_data)
+        else:
+            self.view.show_message("Error", "Could not load trip details.")
 
-    def on_trip_details_loaded(self, response):
-        if "trip" in response:
-            self.bus.publish("NAVIGATE", {
-                "index": 3, 
-                "username": self.model.username,
-                "trip_data": response["trip"],
-                "mode": "history"
-            })
+    def delete_trip(self, trip_id):
+        if self.view.confirm_delete():
+            success = self.model.delete_trip(self.service, trip_id)
+            if success:
+                self.refresh_list()
+            else:
+                self.view.show_message("Error", "Failed to delete trip.")
 
     def go_back(self):
-        self.bus.publish("NAVIGATE", {"index": 1, "username": self.model.username})
-
-    def on_error(self, msg):
-        print(f"Error: {msg}")
+        # Back to Dashboard (Index 1)
+        self.bus.publish("NAVIGATE", {"index": 1})

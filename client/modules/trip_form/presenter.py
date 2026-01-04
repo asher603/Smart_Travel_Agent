@@ -1,67 +1,63 @@
-class TripFormPresenter:
+from PySide6.QtCore import QObject
+
+class TripFormPresenter(QObject):
     def __init__(self, view, model, api_service, event_bus):
+        super().__init__()
         self.view = view
         self.model = model
-        self.api = api_service
+        self.service = api_service
         self.bus = event_bus
 
+        # Connect View Signals
         self.view.generate_requested.connect(self.handle_generate)
         self.view.back_requested.connect(self.go_back)
 
-    def set_user(self, username):
-        self.model.username = username
-
-    def go_back(self):
-        # Index 1 = Dashboard
-        self.bus.publish("NAVIGATE", {"index": 1, "username": self.model.username})
-
-    def handle_generate(self, form_data):
-        # 1. Update Model
-        self.model.destination = form_data['destination']
-        self.model.origin = form_data['origin']
-        self.model.start_date = form_data['start_date']
-        self.model.end_date = form_data['end_date']
-        
-        try:
-            self.model.budget = int(form_data['budget'])
-        except ValueError:
-            self.model.budget = 0
-
-        # 2. Validate
-        is_valid, err = self.model.is_valid()
-        if not is_valid:
-            # Note: View should ideally have a show_error method
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(self.view, "Error", err) 
-            return
-
-        # 3. Call API
+    def handle_generate(self, data):
+        """
+        Handles the 'Generate Trip' click.
+        'data' contains strings from the View (e.g., '2025-05-01').
+        """
+        print(f"📝 Presenter received form data: {data}")
         self.view.show_loading(True)
+
+        # 1. Update Model (Optional, if you want to store state)
+        self.model.destination = data.get("destination")
+        self.model.start_date = data.get("start_date") # Already a String!
+        self.model.end_date = data.get("end_date")     # Already a String!
         
-        request_payload = {
-            "username": self.model.username,
-            "destination": self.model.destination,
-            "origin": self.model.origin,
-            "budget": self.model.budget,
-            "currency": form_data['currency'],
-            "interest": form_data['interests'],
-            "start_date": self.model.start_date.strftime("%Y-%m-%d"),
-            "end_date": self.model.end_date.strftime("%Y-%m-%d")
+        # 2. Prepare Payload
+        # FIX: Send data directly. Do NOT use strftime() here.
+        payload = {
+            "destination": data.get("destination"),
+            "origin": data.get("origin"),
+            "budget": data.get("budget"),
+            "currency": data.get("currency"),
+            "interests": data.get("interests"),
+            "start_date": data.get("start_date"), # <--- Just use the string
+            "end_date": data.get("end_date")      # <--- Just use the string
         }
 
-        self.api.generate_trip(request_payload, self.on_success, self.on_error)
+        # 3. Call API
+        try:
+            # We use a Thread or async call in a real app, 
+            # but for now we call the service directly (blocking is okay for MVP)
+            response = self.service.generate_trip(payload)
+            
+            self.view.show_loading(False)
+            
+            if response and "trip" in response:
+                print("✅ Trip Generated! Navigating to Viewer...")
+                # Navigate to Trip Viewer (Index 4)
+                self.bus.publish("NAVIGATE", {"index": 4})
+                # Pass the Trip Data to the Viewer
+                self.bus.publish("LOAD_TRIP", response["trip"])
+            else:
+                self.view.show_message("Error", "Failed to generate trip plan.")
+                
+        except Exception as e:
+            self.view.show_loading(False)
+            print(f"❌ Generation Error: {e}")
+            self.view.show_message("Error", f"Connection failed: {str(e)}")
 
-    def on_success(self, response_data):
-        self.view.show_loading(False)
-        # 4. Navigate to Result Screen (Index 3) with Data
-        self.bus.publish("NAVIGATE", {
-            "index": 3, 
-            "username": self.model.username,
-            "trip_data": response_data,
-            "mode": "new"
-        })
-
-    def on_error(self, error_msg):
-        self.view.show_loading(False)
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.critical(self.view, "Generation Failed", str(error_msg))
+    def go_back(self):
+        self.bus.publish("NAVIGATE", {"index": 1})

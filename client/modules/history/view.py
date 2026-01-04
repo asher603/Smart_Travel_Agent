@@ -1,76 +1,48 @@
 import random
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
-    QScrollArea, QFrame, QPushButton, QMessageBox, QGraphicsDropShadowEffect
+    QListWidget, QListWidgetItem, QPushButton, QFrame, 
+    QMessageBox, QGraphicsDropShadowEffect
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QSize
 from PySide6.QtGui import QColor
-
 from components import FloatingParticle, ScaleButton
 
-class TripHistoryCard(QFrame):
-    """A styled card for a single history item"""
-    clicked = Signal(str) # Emits trip_id
-    delete_clicked = Signal(str)
+class HistoryItemWidget(QWidget):
+    """Custom Row Widget: Text + Delete Button"""
+    delete_clicked = Signal(str) # Emits trip_id
 
-    def __init__(self, trip_id, destination, date_str, budget_str):
+    def __init__(self, text, trip_id):
         super().__init__()
         self.trip_id = trip_id
-        self.setCursor(Qt.PointingHandCursor)
-        self.setFixedHeight(90)
-        self.setStyleSheet("""
-            QFrame {
-                background-color: white; border-radius: 15px; border: 1px solid #E2E8F0;
-            }
-            QFrame:hover { border: 1px solid #3B82F6; background-color: #F8FAFC; }
-        """)
         
         layout = QHBoxLayout(self)
-        layout.setContentsMargins(20, 10, 20, 10)
-
-        # Icon
-        icon = QLabel("✈️")
-        icon.setStyleSheet("font-size: 24px; border: none; background: transparent;")
+        layout.setContentsMargins(15, 15, 15, 15)
         
-        # Text Info
-        info_layout = QVBoxLayout()
-        lbl_dest = QLabel(destination)
-        lbl_dest.setStyleSheet("font-size: 18px; font-weight: bold; color: #1E293B; border: none; background: transparent;")
+        self.lbl_text = QLabel(text)
+        self.lbl_text.setStyleSheet("font-size: 15px; color: #334155; font-weight: 500;")
         
-        lbl_meta = QLabel(f"{date_str}  •  Budget: {budget_str}")
-        lbl_meta.setStyleSheet("font-size: 14px; color: #64748B; border: none; background: transparent;")
-        
-        info_layout.addWidget(lbl_dest)
-        info_layout.addWidget(lbl_meta)
-        
-        # Delete Button
-        btn_del = QPushButton("🗑️")
-        btn_del.setFixedSize(40, 40)
-        btn_del.setCursor(Qt.PointingHandCursor)
-        btn_del.setStyleSheet("""
-            QPushButton { background: rgba(239, 68, 68, 0.1); border-radius: 10px; border: none; color: #DC2626; font-size: 18px; }
-            QPushButton:hover { background: #DC2626; color: white; }
+        self.btn_delete = QPushButton("🗑️")
+        self.btn_delete.setFixedSize(35, 35)
+        self.btn_delete.setCursor(Qt.PointingHandCursor)
+        self.btn_delete.setStyleSheet("""
+            QPushButton { background: #FEE2E2; border: none; border-radius: 8px; color: #DC2626; font-size: 16px; }
+            QPushButton:hover { background: #FECACA; }
         """)
-        btn_del.clicked.connect(self._on_del)
-
-        layout.addWidget(icon)
-        layout.addSpacing(15)
-        layout.addLayout(info_layout)
+        self.btn_delete.clicked.connect(self.on_delete)
+        
+        layout.addWidget(self.lbl_text)
         layout.addStretch()
-        layout.addWidget(btn_del)
+        layout.addWidget(self.btn_delete)
 
-    def mousePressEvent(self, event):
-        self.clicked.emit(self.trip_id)
-        super().mousePressEvent(event)
-
-    def _on_del(self):
+    def on_delete(self):
         self.delete_clicked.emit(self.trip_id)
 
 
 class HistoryView(QWidget):
-    back_requested = Signal()
-    trip_selected = Signal(str) # trip_id
-    delete_requested = Signal(str) # trip_id
+    back_signal = Signal()
+    trip_clicked_signal = Signal(str) # Emits trip_id to presenter
+    delete_trip_signal = Signal(str)  # Emits trip_id to presenter
 
     def __init__(self):
         super().__init__()
@@ -78,72 +50,98 @@ class HistoryView(QWidget):
         self.create_particles()
 
     def create_particles(self):
-        for _ in range(15):
-            p = FloatingParticle(self, random.randint(0, 1000), random.randint(0, 800), random.randint(5, 15))
+        for _ in range(20):
+            size = random.randint(5, 15)
+            x = random.randint(0, 1000)
+            y = random.randint(0, 800)
+            p = FloatingParticle(self, x, y, size)
             p.lower()
 
     def init_ui(self):
-        self.setStyleSheet("background: #0F172A; font-family: 'Segoe UI';")
+        self.setStyleSheet("background: #0F172A; font-family: 'Segoe UI'; color: white;")
+        
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(50, 40, 50, 40)
+        main_layout.setAlignment(Qt.AlignCenter)
+        main_layout.setContentsMargins(50, 50, 50, 50)
 
-        # Header
-        header_layout = QHBoxLayout()
-        btn_back = ScaleButton("⬅ Back", "#475569", "#334155")
-        btn_back.setFixedSize(100, 40)
-        btn_back.clicked.connect(self.back_requested.emit)
-        
-        title = QLabel("My Travel Log 🌍")
-        title.setStyleSheet("font-size: 32px; font-weight: 800; color: white; border: none; background: transparent;")
-        
-        header_layout.addWidget(btn_back)
-        header_layout.addSpacing(20)
-        header_layout.addWidget(title)
-        header_layout.addStretch()
-        
-        main_layout.addLayout(header_layout)
-        main_layout.addSpacing(20)
+        # --- Header ---
+        header = QLabel("My Trips 🌍")
+        header.setStyleSheet("font-size: 32px; font-weight: bold; color: white; margin-bottom: 20px; background: transparent;")
+        header.setAlignment(Qt.AlignCenter)
+        main_layout.addWidget(header)
 
-        # Scroll Area for List
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("""
-            QScrollArea { border: none; background: transparent; }
-            QWidget#ScrollContent { background: transparent; }
+        # --- Card Container ---
+        card = QFrame()
+        card.setStyleSheet("background-color: white; border-radius: 20px;")
+        card.setFixedWidth(700) # Wider for the list
+        
+        shadow = QGraphicsDropShadowEffect()
+        shadow.setBlurRadius(40); shadow.setColor(QColor(0,0,0,80)); shadow.setOffset(0, 10)
+        card.setGraphicsEffect(shadow)
+
+        card_layout = QVBoxLayout(card)
+        card_layout.setSpacing(20)
+        card_layout.setContentsMargins(40, 40, 40, 40)
+
+        # --- List Widget ---
+        self.list_widget = QListWidget()
+        self.list_widget.setStyleSheet("""
+            QListWidget { background: transparent; border: none; outline: none; }
+            QListWidget::item { 
+                background: #F8FAFC; border-radius: 12px; border: 1px solid #E2E8F0; 
+                margin-bottom: 10px; 
+            }
+            QListWidget::item:hover { border: 1px solid #3B82F6; background: #EFF6FF; }
+            QListWidget::item:selected { background: #EFF6FF; border: 1px solid #3B82F6; }
         """)
-        
-        self.scroll_content = QWidget()
-        self.scroll_content.setObjectName("ScrollContent")
-        self.scroll_layout = QVBoxLayout(self.scroll_content)
-        self.scroll_layout.setSpacing(15)
-        self.scroll_layout.addStretch() # Pushes items to top
-        
-        scroll.setWidget(self.scroll_content)
-        main_layout.addWidget(scroll)
+        self.list_widget.itemClicked.connect(self.on_row_clicked)
+        card_layout.addWidget(self.list_widget)
 
-    def render_list(self, trips):
-        # Clear existing
-        for i in reversed(range(self.scroll_layout.count())): 
-            widget = self.scroll_layout.itemAt(i).widget()
-            if widget: widget.setParent(None)
+        # --- Back Button ---
+        self.btn_back = ScaleButton("Back to Dashboard", "#64748B", "#475569")
+        self.btn_back.clicked.connect(self.back_signal.emit)
+        card_layout.addWidget(self.btn_back)
 
+        main_layout.addWidget(card)
+
+    def update_list(self, trips):
+        self.list_widget.clear()
+        
         if not trips:
-            lbl = QLabel("No trips found yet. Go plan one!")
-            lbl.setAlignment(Qt.AlignCenter)
-            lbl.setStyleSheet("color: #94A3B8; font-size: 18px; background: transparent;")
-            self.scroll_layout.insertWidget(0, lbl)
+            item = QListWidgetItem("No trips found yet. Go plan one!")
+            item.setTextAlignment(Qt.AlignCenter)
+            item.setFlags(Qt.NoItemFlags) # Not clickable
+            self.list_widget.addItem(item)
             return
 
-        # Add items
         for trip in trips:
-            card = TripHistoryCard(
-                trip_id=trip['id'],
-                destination=trip.get('destination', 'Unknown'),
-                date_str=trip.get('date', '')[:10],
-                budget_str=str(trip.get('budget', '?'))
-            )
-            card.clicked.connect(self.trip_selected.emit)
-            card.delete_clicked.connect(self.delete_requested.emit)
+            dest = trip.get("destination", "Unknown")
+            date = trip.get("date", "")[:10]
+            budget = trip.get("budget", "?")
+            trip_id = trip.get("id") or trip.get("_id") # Handle Mongo ID variations
             
-            # Insert at top (index 0) so newest is first, or append before stretch
-            self.scroll_layout.insertWidget(self.scroll_layout.count() - 1, card)
+            display_text = f"✈️  {dest}   |   💰 {budget}   |   📅 {date}"
+            
+            item = QListWidgetItem(self.list_widget)
+            item.setSizeHint(QSize(0, 80))
+            item.setData(Qt.UserRole, str(trip_id)) # Store ID
+            
+            # Create Custom Row Widget
+            row_widget = HistoryItemWidget(display_text, str(trip_id))
+            row_widget.delete_clicked.connect(self.delete_trip_signal.emit)
+            
+            self.list_widget.setItemWidget(item, row_widget)
+
+    def on_row_clicked(self, item):
+        trip_id = item.data(Qt.UserRole)
+        if trip_id:
+            self.trip_clicked_signal.emit(trip_id)
+
+    def show_message(self, title, msg):
+        QMessageBox.information(self, title, msg)
+        
+    def confirm_delete(self):
+        reply = QMessageBox.question(self, 'Delete Trip', 
+            "Are you sure you want to delete this trip?",
+            QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        return reply == QMessageBox.Yes
