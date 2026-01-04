@@ -10,6 +10,6 @@ COPY . ./data_service
 # Allow imports from root
 ENV PYTHONPATH=/app
 
-EXPOSE 8002
+EXPOSE 8003
 
-CMD ["uvicorn", "data_service.main:app", "--host", "0.0.0.0", "--port", "8002"]
+CMD ["uvicorn", "data_service.main:app", "--host", "0.0.0.0", "--port", "8003"]

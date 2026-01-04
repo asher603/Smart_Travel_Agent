@@ -1,3 +1,4 @@
+import certifi
 from pymongo import MongoClient
 from data_service.core.config import settings
 
@@ -9,24 +10,28 @@ db_instance = Database()
 def get_db():
     if db_instance.client is None:
         init_mongo()
-    return db_instance.client[settings.DB_NAME]
+    # FIX: Changed DB_NAME to DATABASE_NAME to match docker-compose environment variable
+    return db_instance.client[settings.DATABASE_NAME]
 
 def init_mongo():
     if not settings.MONGODB_URI:
         raise ValueError("MONGODB_URI not found in environment variables")
 
-    print(f"🔌 Connecting to MongoDB at {settings.MONGODB_URI} ...")
+    # SECURITY: Print only the host part to avoid exposing password in logs
+    masked_uri = settings.MONGODB_URI.split('@')[-1] if '@' in settings.MONGODB_URI else "HIDDEN"
+    print(f"🔌 Connecting to MongoDB Atlas at: ...@{masked_uri}")
+
     try:
-        # FORCE TLS OFF: This is the critical fix for local Docker
+        # CRITICAL FIX for Docker + MongoDB Atlas:
         db_instance.client = MongoClient(
             settings.MONGODB_URI,
-            tls=False,  
+            tlsCAFile=certifi.where(),
             uuidRepresentation='standard'
         )
         
         # Test connection
         db_instance.client.admin.command('ping')
-        print("✅ Connected to Event Store!")
+        print("✅ Connected to MongoDB Atlas successfully!")
     except Exception as e:
         print(f"❌ MongoDB Connection Failed: {e}")
         raise e

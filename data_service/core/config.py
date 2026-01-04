@@ -2,21 +2,24 @@ import os
 from pydantic_settings import BaseSettings
 
 class Settings(BaseSettings):
-    APP_NAME: str = "Smart Travel Data Service (Event Store)"
+    """
+    Application configuration settings.
+    Loads values from environment variables defined in .env or Docker environment.
+    """
     
-    # Database Config
-    # Priority: Env Var (Docker) -> .env file -> Default Value
-    MONGODB_URI: str = "mongodb://localhost:27017" 
-    DB_NAME: str = "smart_travel_events"
+    # --- הוספתי את השורה הזו שחסרה ---
+    APP_NAME: str = "Smart Travel Data Service"
+
+    # Connection string for MongoDB (Cloud Atlas)
+    # Defaults to localhost if the environment variable is not set
+    MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     
-    # Collection Names (Constants)
-    COLLECTION_EVENTS: str = "event_log"
-    COLLECTION_SNAPSHOTS: str = "trip_snapshots"
+    # The name of the database to use
+    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "travel_db")
 
     class Config:
+        case_sensitive = True
+        # אופציונלי: טוען משתנים מקובץ .env אם מריצים לוקאלית (לא דרך דוקר)
         env_file = ".env"
-        env_file_encoding = "utf-8"
-        # This prevents errors if .env is missing (common in Docker)
-        extra = "ignore" 
 
 settings = Settings()

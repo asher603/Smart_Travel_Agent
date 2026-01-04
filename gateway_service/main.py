@@ -1,18 +1,25 @@
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-import os
 
-app = FastAPI(title="Smart Travel Gateway")
+# --- FIX: Import directly from 'core' because we are inside the /app directory in Docker ---
+from core.config import settings 
 
-# --- FIX: Default to the Docker Service Name ---
-APP_SERVER_URL = os.getenv("APP_SERVER_URL", "http://travel_app_server:8000")
+app = FastAPI(title=settings.APP_NAME)
 
 async def proxy_request(service_url: str, path: str, request: Request):
+    """
+    Helper function to forward a request to another service.
+    """
     client = httpx.AsyncClient()
     url = f"{service_url}{path}"
+    
+    print(f"🔄 Proxying request to: {url}")
+
     try:
         body = await request.body()
+        
+        # Forward the request to the internal service
         resp = await client.request(
             method=request.method,
             url=url,
@@ -20,14 +27,42 @@ async def proxy_request(service_url: str, path: str, request: Request):
             content=body,
             timeout=60.0 
         )
+        
+        # Return the response from the internal service back to the client
         return JSONResponse(content=resp.json(), status_code=resp.status_code)
+
+    except httpx.ConnectError:
+        # Error handling if the internal service is down or unreachable
+        return JSONResponse(
+            content={"detail": f"Gateway Error: Could not connect to {service_url}"}, 
+            status_code=502
+        )
     except Exception as e:
-        return JSONResponse(content={"detail": f"Gateway Error: {str(e)}"}, status_code=503)
+        # General error handling
+        return JSONResponse(
+            content={"detail": f"Gateway Error: {str(e)}"}, 
+            status_code=500
+        )
     finally:
         await client.aclose()
 
-# Catch-all Route (Proxies everything to App Server)
+# ---------------------------------------------------------
+# Routes
+# ---------------------------------------------------------
+
+@app.get("/health")
+async def health_check():
+    """
+    Simple health check to verify the Gateway is running.
+    """
+    return {"status": "alive", "service": "gateway"}
+
 @app.api_route("/{path_name:path}", methods=["GET", "POST", "PUT", "DELETE"])
 async def catch_all(path_name: str, request: Request):
-    # This forwards "/trips/generate" -> "http://travel_app_server:8000/trips/generate"
-    return await proxy_request(APP_SERVER_URL, f"/{path_name}", request)
+    """
+    Catch-all route.
+    Forwards all incoming requests to the main Server Service.
+    Example: /trips/generate -> http://server:8001/trips/generate
+    """
+    # Fix: Use settings.SERVER_URL (which is http://server:8001)
+    return await proxy_request(settings.SERVER_URL, f"/{path_name}", request)

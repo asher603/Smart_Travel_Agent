@@ -11,7 +11,7 @@ COPY . ./ai_service
 # 3. Add /app to PYTHONPATH so imports like "from ai_service..." work
 ENV PYTHONPATH=/app
 
-EXPOSE 8001
+EXPOSE 8002
 
 # 4. Run the module using the folder name
-CMD ["uvicorn", "ai_service.main:app", "--host", "0.0.0.0", "--port", "8001"]
+CMD ["uvicorn", "ai_service.main:app", "--host", "0.0.0.0", "--port", "8002"]

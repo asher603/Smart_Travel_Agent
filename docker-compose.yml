@@ -1,57 +1,36 @@
+version: '3.8'
+
 services:
   # -----------------------------
-  # 1. DATABASE (MongoDB)
+  # 1. GATEWAY (Entry Point)
+  # Port: 8000
   # -----------------------------
-  mongo:
-    image: mongo:latest
-    container_name: travel_mongo
+  gateway_service:
+    build: ./gateway_service
     ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-
-  # -----------------------------
-  # 2. DATA SERVICE (Event Store)
-  # -----------------------------
-  data_service:
-    build: 
-      context: ./data_service
-    container_name: travel_data_service
-    ports:
-      - "8002:8002"
+      - "8000:8000"
     environment:
-      - MONGODB_URI=mongodb://mongo:27017
-      - DB_NAME=smart_travel_events
+      - SERVER_URL=http://server:8001
+      - AI_SERVICE_URL=http://ai_service:8002
+      - DATA_SERVICE_URL=http://data_service:8003
     depends_on:
-      - mongo
+      - server
+      - ai_service
+      - data_service
 
   # -----------------------------
-  # 3. AI SERVICE (The Brain)
+  # 2. SERVER (Main Logic / App Server)
+  # Port: 8001
   # -----------------------------
-  ai_service:
-    build:
-      context: ./ai_service
-    container_name: travel_ai_service
+  server:
+    build: ./server
     ports:
       - "8001:8001"
     environment:
-      - GROQ_API_KEY=${GROQ_API_KEY}
-      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
-      - HF_TOKEN=${HF_TOKEN}
-    # Note: No 'depends_on' needed, it's stateless
-
-  # -----------------------------
-  # 4. APP SERVER (MVC Logic)
-  # -----------------------------
-  app_server:
-    build:
-      context: ./server
-    container_name: travel_app_server
-    ports:
-      - "8003:8003"
-    environment:
-      - DATA_SERVICE_URL=http://data_service:8002
-      - AI_SERVICE_URL=http://ai_service:8001
+      # Internal Service URLs
+      - DATA_SERVICE_URL=http://data_service:8003
+      - AI_SERVICE_URL=http://ai_service:8002
+      # API Keys from .env
       - AMADEUS_API_KEY=${AMADEUS_API_KEY}
       - AMADEUS_SECRET=${AMADEUS_SECRET}
     depends_on:
@@ -59,19 +38,37 @@ services:
       - ai_service
 
   # -----------------------------
-  # 5. GATEWAY (The Entry Point)
+  # 3. AI SERVICE (The Brain)
+  # Port: 8002
   # -----------------------------
-  gateway:
-    build:
-      context: ./gateway_service
-    container_name: travel_gateway
+  ai_service:
+    build: ./ai_service
     ports:
-      - "8000:8000"
+      - "8002:8002"
     environment:
-      - APP_SERVER_URL=http://app_server:8003
-      - AI_SERVICE_URL=http://ai_service:8001
-    depends_on:
-      - app_server
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+      - HUGGINGFACE_API_KEY=${HF_TOKEN}
 
-volumes:
-  mongo_data:
+  # -----------------------------
+  # 4. DATA SERVICE (Event Store + DB)
+  # Port: 8003
+  # -----------------------------
+  data_service:
+    build: ./data_service
+    ports:
+      - "8003:8003"
+    
+    # -------------------------------------------------------
+    # CRITICAL CONFIG: Google DNS for MongoDB Atlas Resolution
+    # Required for resolving SRV records inside Docker
+    # -------------------------------------------------------
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
+
+    environment:
+      # Connection string injected from .env
+      - MONGODB_URI=${MONGODB_URI}
+      - DATABASE_NAME=travel_db
