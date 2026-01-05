@@ -1,4 +1,29 @@
-from PySide6.QtCore import QObject
+from PySide6.QtCore import QObject, QThread, Signal
+
+# Worker to run API call in background
+class GenerateTripWorker(QThread):
+    finished = Signal(dict)
+    error = Signal(str)
+
+    def __init__(self, api_service, payload):
+        super().__init__()
+        self.service = api_service
+        self.payload = payload
+
+    def run(self):
+        try:
+            # This will now wait 60s for the Real AI
+            result = self.service.generate_trip(self.payload)
+            
+            if result and "trip" in result:
+                self.finished.emit(result["trip"])
+            elif result and "detail" in result:
+                # Handle FastAPI Error Messages
+                self.error.emit(str(result["detail"]))
+            else:
+                self.error.emit("Unknown API Error")
+        except Exception as e:
+            self.error.emit(str(e))
 
 class TripFormPresenter(QObject):
     def __init__(self, view, model, api_service, event_bus):
@@ -8,24 +33,15 @@ class TripFormPresenter(QObject):
         self.service = api_service
         self.bus = event_bus
 
-        # Connect View Signals
         self.view.generate_requested.connect(self.handle_generate)
         self.view.back_requested.connect(self.go_back)
+        self.worker = None
 
     def handle_generate(self, data):
-        """
-        Handles the 'Generate Trip' click.
-        'data' contains strings from the View (e.g., '2025-05-01').
-        """
-        print(f"📝 Presenter received form data: {data}")
+        # 1. Lock UI
         self.view.show_loading(True)
 
-        # 1. Update Model
-        self.model.destination = data.get("destination")
-        self.model.start_date = data.get("start_date")
-        self.model.end_date = data.get("end_date")
-        
-        # 2. Prepare Payload
+        # 2. Prepare Data
         payload = {
             "destination": data.get("destination"),
             "origin": data.get("origin"),
@@ -36,27 +52,22 @@ class TripFormPresenter(QObject):
             "end_date": data.get("end_date")
         }
 
-        # 3. Call API
-        try:
-            # We use a Thread or async call in a real app, 
-            # but for now we call the service directly (blocking is okay for MVP)
-            response = self.service.generate_trip(payload)
-            
-            self.view.show_loading(False)
-            
-            if response and "trip" in response:
-                print("✅ Trip Generated! Navigating to Viewer...")
-                # Navigate to Trip Viewer (Index 4)
-                self.bus.publish("NAVIGATE", {"index": 4})
-                # Pass the Trip Data to the Viewer
-                self.bus.publish("LOAD_TRIP", response["trip"])
-            else:
-                self.view.show_message("Error", "Failed to generate trip plan.")
-                
-        except Exception as e:
-            self.view.show_loading(False)
-            print(f"❌ Generation Error: {e}")
-            self.view.show_message("Error", f"Connection failed: {str(e)}")
+        # 3. Start Background Worker
+        self.worker = GenerateTripWorker(self.service, payload)
+        self.worker.finished.connect(self.on_success)
+        self.worker.error.connect(self.on_error)
+        self.worker.start()
+
+    def on_success(self, trip_data):
+        self.view.show_loading(False)
+        print("✅ Trip Generated! Navigating...")
+        self.bus.publish("NAVIGATE", {"index": 4})
+        self.bus.publish("LOAD_TRIP", trip_data)
+
+    def on_error(self, error_msg):
+        self.view.show_loading(False)
+        print(f"❌ Generation Error: {error_msg}")
+        self.view.show_message("Error", f"Generation Failed:\n{error_msg}")
 
     def go_back(self):
         self.bus.publish("NAVIGATE", {"index": 1})

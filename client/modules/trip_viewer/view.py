@@ -1,19 +1,23 @@
-from datetime import datetime
+import base64
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QLineEdit, QComboBox, QScrollArea, QFrame, QSplitter, 
-    QListWidget, QListWidgetItem, QDialog, QStackedWidget,
-    QMessageBox, QFileDialog, QDateEdit
+    QListWidget, QListWidgetItem, QDialog, QMessageBox, QDateEdit
 )
-from PySide6.QtCore import Qt, QThread, Signal, QByteArray, QTimer, QSize, QDate
+from PySide6.QtCore import Qt, Signal, QByteArray, QTimer, QDate
 from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath
 
-# --- SAFETY IMPORTS (In case paths changed) ---
+# --- IMPORT WORKERS ---
+from .workers import (
+    ImageWorker, ChatWorker, StateSaverWorker, 
+    WeatherWorker, FlightWorker, BudgetWorker, RefineWorker
+)
+
+# --- SAFETY IMPORTS ---
 try:
-    from components import GlassCard
+    from components import GlassCard as Card
 except ImportError:
-    # Fallback Card if file missing
-    class GlassCard(QFrame):
+    class Card(QFrame):
         def __init__(self):
             super().__init__()
             self.setStyleSheet("background-color: white; border-radius: 10px; border: 1px solid #e0e0e0;")
@@ -22,62 +26,6 @@ try:
     from utils.pdf_generator import generate_trip_pdf
 except ImportError:
     generate_trip_pdf = None
-
-# --- WORKERS (Kept from your original code) ---
-class ImageWorker(QThread):
-    finished_signal = Signal(str) 
-    def __init__(self, api, destination, interest):
-        super().__init__(); self.api = api; self.destination = destination; self.interest = interest
-    def run(self):
-        try:
-            # Note: Ensure your API Service has a generic post or specific generate_image
-            response = self.api.post("/ai/generate_image", {"destination": self.destination, "interest": self.interest})
-            self.finished_signal.emit(response.get("image_base64") if response else None)
-        except: self.finished_signal.emit(None)
-
-class ChatWorker(QThread):
-    finished_signal = Signal(str)
-    def __init__(self, api, question, context):
-        super().__init__(); self.api = api; self.question = question; self.context = context
-    def run(self):
-        try:
-            response = self.api.post("/ai/ask", {"question": self.question, "context": self.context})
-            self.finished_signal.emit(response.get("answer", "No response"))
-        except: self.finished_signal.emit("Error connecting")
-
-class StateSaverWorker(QThread):
-    def __init__(self, api, trip_id, history):
-        super().__init__(); self.api = api; self.trip_id = trip_id; self.history = history
-    def run(self):
-        # We use the new endpoint structure
-        self.api.post("/trips/update_state", {"trip_id": self.trip_id, "chat_history": self.history})
-
-class WeatherWorker(QThread):
-    finished_signal = Signal(dict)
-    def __init__(self, api, destination):
-        super().__init__(); self.api = api; self.destination = destination
-    def run(self):
-        # Fallback if get_weather missing
-        if hasattr(self.api, 'get_weather'):
-            self.finished_signal.emit(self.api.get_weather(self.destination))
-        else:
-            self.finished_signal.emit({"temp": 25, "desc": "Sunny (Mock)", "icon": "☀️"})
-
-class FlightWorker(QThread):
-    finished_signal = Signal(list)
-    def __init__(self, api, origin, dest, date):
-        super().__init__(); self.api = api; self.origin = origin; self.dest = dest; self.date = date
-    def run(self):
-        resp = self.api.post("/trips/flights", {"from": self.origin, "to": self.dest, "date": self.date})
-        self.finished_signal.emit(resp.get("flights", []) if resp else [])
-
-class BudgetWorker(QThread):
-    finished_signal = Signal(dict)
-    def __init__(self, api, budget):
-        super().__init__(); self.api = api; self.budget = budget
-    def run(self):
-        resp = self.api.post("/trips/analyze_budget", {"budget": self.budget})
-        self.finished_signal.emit(resp.get("breakdown", {}) if resp else {})
 
 # --- HELPER CLASSES ---
 class ClickableImage(QLabel):
@@ -96,11 +44,11 @@ class ImagePopup(QDialog):
 
 # --- MAIN VIEW CLASS ---
 class TripViewerView(QWidget):
-    back_signal = Signal() # Replaces switch_screen_callback
+    back_signal = Signal()
 
     def __init__(self):
         super().__init__()
-        self.api = None # Will be set by Presenter
+        self.api = None
         self.trip_id = None
         self.username = ""
         self.trip_counter = 0
@@ -115,7 +63,6 @@ class TripViewerView(QWidget):
         self.setup_ui()
 
     def set_api(self, api_service):
-        """Called by Presenter to inject API"""
         self.api = api_service
 
     def setup_ui(self):
@@ -182,7 +129,6 @@ class TripViewerView(QWidget):
         self.trip_list.clear(); self.chat_history_state = []
         self.trip_counter = 0; self.trip_widgets_map = {}; self.image_placeholders = {}; self.weather_labels = {}
         self.active_workers.clear()
-        # Clear layout safely
         while self.feed_layout.count() > 1:
             i = self.feed_layout.takeAt(0)
             if i.widget(): i.widget().deleteLater()
@@ -192,7 +138,7 @@ class TripViewerView(QWidget):
         self.is_loading_mode = False
         self.reset_ui()
         self.username = username
-        self.trip_id = trip_response.get("trip_id") # Might be None initially
+        self.trip_id = trip_response.get("trip_id")
         plan = trip_response
         
         dest = plan.get("destination", "Unknown")
@@ -213,9 +159,7 @@ class TripViewerView(QWidget):
         dest = full_data.get("destination", "")
         self.current_context = f"Dest: {dest}"
         
-        # Load Chat History
         history = full_data.get("chat_history", [])
-        # Fallback if chat_history is empty but we have a basic plan
         if not history and "destination" in full_data:
              self.render_trip_block("Saved Plan", full_data, save=False)
              self.current_plan_data = full_data
@@ -233,7 +177,6 @@ class TripViewerView(QWidget):
         if dest: self.fetch_weather(dest)
         if hasattr(self, 'current_plan_data'): self.btn_pdf.setVisible(True)
 
-    # --- SIMPLIFIED RENDER LOGIC (To save space, assuming your original logic works) ---
     def render_trip_block(self, title, plan_data, is_new=False, save=True):
         self.trip_counter += 1
         ver_id = self.trip_counter
@@ -247,24 +190,29 @@ class TripViewerView(QWidget):
         self.feed_layout.insertWidget(self.feed_layout.count()-1, lbl)
         self.trip_widgets_map[id(item)] = lbl
         
-        # Minimal Cards for MVP (You can paste your full render logic here)
-        # 1. Image
+        # --- Image Placeholder ---
         img_layout = QVBoxLayout(); self.image_placeholders[ver_id] = img_layout
-        card = QFrame(); card.setLayout(img_layout); card.setStyleSheet("border: 1px dashed #ccc;")
+        card = QFrame(); card.setLayout(img_layout); card.setStyleSheet("border: 1px dashed #ccc; min-height: 100px;")
         self.feed_layout.insertWidget(self.feed_layout.count()-1, card)
         
-        # 2. Itinerary
+        # --- Itinerary Render (Basic) ---
         for day in plan_data.get("itinerary", []):
-            d_card = QFrame(); d_card.setStyleSheet("background:white; border-radius:10px; padding:10px;")
+            d_card = QFrame(); d_card.setStyleSheet("background:white; border-radius:10px; padding:10px; margin-top:5px;")
             dl = QVBoxLayout(d_card)
-            dl.addWidget(QLabel(f"Day {day.get('day')}: {day.get('activity') or day.get('title')}"))
+            day_num = day.get('day')
+            text = day.get('activity') or day.get('title') or "Activity"
+            dl.addWidget(QLabel(f"Day {day_num}: {text}"))
+            
+            if "activities" in day and isinstance(day["activities"], list):
+                for act in day["activities"]:
+                    dl.addWidget(QLabel(f"• {act}"))
+            
             self.feed_layout.insertWidget(self.feed_layout.count()-1, d_card)
 
         if save and not self.is_loading_mode:
             self.chat_history_state.append({"type": "plan", "content": {"title": title, "plan": plan_data}})
             self.save_state_to_server()
 
-    # --- WORKER TRIGGERS ---
     def trigger_image_generation(self, destination, interest, ver_id):
         worker = ImageWorker(self.api, destination, interest)
         worker.finished_signal.connect(lambda b64: self.render_image_in_placeholder(b64, ver_id))
@@ -272,24 +220,50 @@ class TripViewerView(QWidget):
 
     def render_image_in_placeholder(self, b64, ver_id, save=True):
         l = self.image_placeholders.get(ver_id)
-        if l and b64:
-            # Simple render for MVP
-            lbl = QLabel(); lbl.setText("Image Loaded")
-            # In real code: convert b64 to pixmap (use your original code here)
-            l.addWidget(lbl)
+        if l:
+            while l.count(): l.takeAt(0).widget().deleteLater()
+            if b64:
+                try:
+                    data = base64.b64decode(b64)
+                    pix = QPixmap(); pix.loadFromData(QByteArray(data))
+                    lbl = QLabel(); lbl.setPixmap(pix.scaled(400, 300, Qt.KeepAspectRatio))
+                    l.addWidget(lbl)
+                except:
+                    l.addWidget(QLabel("Image Error"))
+            else:
+                l.addWidget(QLabel("No Image Available"))
+            
             if save and not self.is_loading_mode:
                 self.chat_history_state.append({"type": "image", "content": b64})
                 self.save_state_to_server()
 
     def fetch_weather(self, dest):
         w = WeatherWorker(self.api, dest)
-        # w.finished_signal.connect(...) # Connect to UI update
         self.start_worker(w)
 
     def on_send(self):
         msg = self.chat_input.text(); self.chat_input.clear()
-        if msg: self.add_bubble(msg, True)
-        # Add chat worker logic here (Use your original code)
+        if not msg: return
+        self.add_bubble(msg, True)
+        
+        mode = self.mode_combo.currentText()
+        if "Question" in mode:
+            w = ChatWorker(self.api, msg, self.current_context)
+            w.finished_signal.connect(lambda ans: self.add_bubble(ans, False))
+            self.start_worker(w)
+        else:
+            # Refine Trip
+            self.add_bubble("Refining Plan...", False)
+            w = RefineWorker(self.api, self.current_plan_data, msg)
+            w.finished.connect(lambda res: self.on_refine_done(res, msg))
+            self.start_worker(w)
+
+    def on_refine_done(self, res, msg):
+        if res and "trip_plan" in res:
+             self.current_plan_data = res["trip_plan"]
+             self.render_trip_block(f"Fix: {msg}", res["trip_plan"], is_new=True)
+        else:
+             self.add_bubble("Failed to refine plan.", False)
 
     def add_bubble(self, text, is_user, save=True):
         lbl = QLabel(text); lbl.setStyleSheet(f"background: {'#e3f2fd' if is_user else 'white'}; padding: 10px; border-radius: 10px;")
@@ -304,7 +278,8 @@ class TripViewerView(QWidget):
             self.start_worker(w)
 
     def scroll_to_item(self, item):
-        pass # Implement scroll logic
+        w = self.trip_widgets_map.get(id(item))
+        if w: self.scroll_area.ensureWidgetVisible(w)
         
     def save_pdf(self):
         if generate_trip_pdf:
