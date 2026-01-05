@@ -49,7 +49,8 @@ class TripFormPresenter(QObject):
             "currency": data.get("currency"),
             "interests": data.get("interests"),
             "start_date": data.get("start_date"),
-            "end_date": data.get("end_date")
+            "end_date": data.get("end_date"),
+            "username": self.model.username or "guest"
         }
 
         # 3. Start Background Worker

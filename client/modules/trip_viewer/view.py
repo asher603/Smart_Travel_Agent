@@ -3,18 +3,17 @@ import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QLineEdit, QComboBox, QScrollArea, QFrame, QSplitter, 
-    QListWidget, QListWidgetItem, QDialog, QMessageBox, QDateEdit
+    QListWidget, QListWidgetItem, QDialog, QMessageBox, QFileDialog, QStackedWidget, QDateEdit
 )
 from PySide6.QtCore import Qt, Signal, QByteArray, QTimer, QDate
 from PySide6.QtGui import QPixmap, QImage
 
-# --- IMPORT WORKERS ---
+# --- IMPORTS ---
 from .workers import (
     ImageWorker, ChatWorker, StateSaverWorker, 
     WeatherWorker, FlightWorker, BudgetWorker, RefineWorker
 )
 
-# --- IMPORTS (Safety Checks) ---
 try:
     from components import GlassCard as Card
 except ImportError:
@@ -43,7 +42,7 @@ class ImagePopup(QDialog):
         lbl = QLabel(); lbl.setPixmap(pixmap.scaled(880, 680, Qt.KeepAspectRatio, Qt.SmoothTransformation))
         l.addWidget(lbl)
 
-# --- MAIN VIEW CLASS ---
+# --- MAIN VIEW ---
 class TripViewerView(QWidget):
     back_signal = Signal()
 
@@ -94,11 +93,19 @@ class TripViewerView(QWidget):
         self.trip_list = QListWidget(); self.trip_list.itemClicked.connect(self.scroll_to_item)
         tl.addWidget(self.trip_list)
         
-        self.scroll_area = QScrollArea(); self.scroll_area.setWidgetResizable(True)
+        # Scroll Area - FIXED: Force disable horizontal scroll
+        self.scroll_area = QScrollArea()
+        self.scroll_area.setWidgetResizable(True) # Critical for wrapping
+        self.scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.scroll_area.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        self.feed_cont = QWidget(); self.feed_cont.setStyleSheet("background: transparent;")
-        self.feed_layout = QVBoxLayout(self.feed_cont); self.feed_layout.setSpacing(20)
+        
+        self.feed_cont = QWidget()
+        self.feed_cont.setStyleSheet("background: transparent;")
+        self.feed_layout = QVBoxLayout(self.feed_cont)
+        self.feed_layout.setSpacing(20)
+        self.feed_layout.setContentsMargins(20, 0, 20, 20)
         self.feed_layout.addStretch()
+        
         self.scroll_area.setWidget(self.feed_cont)
         
         splitter.addWidget(self.toc_widget); splitter.addWidget(self.scroll_area)
@@ -135,24 +142,20 @@ class TripViewerView(QWidget):
             if i.widget(): i.widget().deleteLater()
 
     def init_new_trip(self, trip_response, username):
-        """Called when generating a fresh trip"""
         self.is_loading_mode = False
         self.reset_ui()
         self.username = username
         self.trip_id = trip_response.get("trip_id")
         plan = trip_response
-        
         dest = plan.get("destination", "Unknown")
         self.current_context = f"Dest: {dest}, Budget: {plan.get('budget', '?')}"
         self.current_plan_data = plan
         self.btn_pdf.setVisible(True)
-        
         self.render_trip_block("Initial Plan", plan, is_new=True)
         self.trigger_image_generation(dest, "travel", self.trip_counter)
         self.fetch_weather(dest)
 
     def load_existing_trip(self, full_data):
-        """Called when loading from History"""
         self.is_loading_mode = True 
         self.reset_ui()
         self.trip_id = full_data.get("id") or full_data.get("_id")
@@ -191,30 +194,98 @@ class TripViewerView(QWidget):
         self.feed_layout.insertWidget(self.feed_layout.count()-1, lbl)
         self.trip_widgets_map[id(item)] = lbl
         
-        # --- DASHBOARD ROW (Image | Weather) ---
-        dash_layout = QHBoxLayout()
-        dash_layout.setSpacing(10)
-        
+        # --- ROW 1: DASHBOARD (Image | Vibe | Weather) ---
+        row1 = QHBoxLayout()
+        row1.setSpacing(10)
+        CARD_HEIGHT = 140
+
         # 1. Image Card
-        img_layout = QVBoxLayout(); self.image_placeholders[ver_id] = img_layout
-        card_img = Card(); card_img.setLayout(img_layout)
-        card_img.setFixedSize(140, 140) # Keep square
-        dash_layout.addWidget(card_img)
+        img_card = Card()
+        img_card.setFixedSize(CARD_HEIGHT, CARD_HEIGHT)
+        img_layout = QVBoxLayout(img_card); img_layout.setContentsMargins(0,0,0,0)
+        self.image_placeholders[ver_id] = img_layout
+        row1.addWidget(img_card)
 
-        # 2. Weather Card
-        card_weather = Card(); card_weather.setFixedHeight(140)
-        w_layout = QVBoxLayout(card_weather); w_layout.setContentsMargins(15,15,15,15)
-        
-        lbl_city = QLabel(plan_data.get("destination", "Location").upper())
-        lbl_city.setStyleSheet("font-size:12px; font-weight:bold; color:#555;")
-        
-        lbl_temp = QLabel("--"); self.weather_labels[ver_id] = lbl_temp
-        lbl_temp.setStyleSheet("font-size:20px; font-weight:bold; color:#0277bd;")
-        
-        w_layout.addWidget(lbl_city); w_layout.addWidget(lbl_temp)
-        dash_layout.addWidget(card_weather)
+        # 2. Vibe Card
+        vibe_card = Card()
+        vibe_card.setFixedHeight(CARD_HEIGHT)
+        vc_layout = QVBoxLayout(vibe_card)
+        vc_layout.addWidget(QLabel("✨ TRIP VIBE", styleSheet="font-size:12px; font-weight:bold; color:#333;"))
+        vibe_val = plan_data.get("summary", "A great trip awaiting you!")
+        lbl_vibe = QLabel(vibe_val)
+        lbl_vibe.setWordWrap(True) # CRITICAL for wrapping
+        lbl_vibe.setStyleSheet("font-size:13px; color:#5e35b1;")
+        vc_layout.addWidget(lbl_vibe)
+        row1.addWidget(vibe_card, 3) # Stretch 3 - 75%
 
-        self.feed_layout.insertLayout(self.feed_layout.count()-1, dash_layout)
+        # 3. Weather Card
+        weather_card = Card()
+        weather_card.setFixedHeight(CARD_HEIGHT)
+        wc_layout = QVBoxLayout(weather_card)
+        wc_layout.addWidget(QLabel(plan_data.get("destination", "").upper(), styleSheet="font-weight:bold;"))
+        lbl_w = QLabel("--"); self.weather_labels[ver_id] = lbl_w
+        lbl_w.setStyleSheet("font-size:18px; color:#0277bd; font-weight:bold;")
+        wc_layout.addWidget(lbl_w)
+        wc_layout.addWidget(QLabel("Current Weather", styleSheet="font-size:9px; color:#888;"))
+        row1.addWidget(weather_card, 1) # Stretch 1 - 25%
+
+        self.feed_layout.insertLayout(self.feed_layout.count()-1, row1)
+
+        # --- ROW 2: LOGISTICS (Flights | Budget) ---
+        row2 = QHBoxLayout()
+        row2.setSpacing(10)
+        ROW2_HEIGHT = 220
+
+        # 1. Flights Card
+        flight_card = Card()
+        flight_card.setFixedHeight(ROW2_HEIGHT)
+        fc_layout = QVBoxLayout(flight_card)
+        fc_layout.addWidget(QLabel("✈️ Flights", styleSheet="font-weight:bold; font-size:14px;"))
+        
+        # Simple Search UI
+        f_in_layout = QHBoxLayout()
+        f_origin = QLineEdit(); f_origin.setPlaceholderText("From (e.g. London)")
+        if plan_data.get("origin"): f_origin.setText(plan_data.get("origin"))
+        btn_f = QPushButton("Search"); btn_f.setCursor(Qt.PointingHandCursor)
+        f_in_layout.addWidget(f_origin); f_in_layout.addWidget(btn_f)
+        fc_layout.addLayout(f_in_layout)
+        
+        f_list = QListWidget(); f_list.setStyleSheet("border:none; background:transparent;")
+        fc_layout.addWidget(f_list)
+
+        def do_flight_search():
+            f_list.clear(); f_list.addItem("Searching...")
+            w = FlightWorker(self.api, f_origin.text(), plan_data.get("destination"), plan_data.get("start_date"))
+            w.finished_signal.connect(lambda res: update_flights(res, f_list))
+            self.start_worker(w)
+
+        def update_flights(res, list_w):
+            list_w.clear()
+            for f in res:
+                list_w.addItem(f"{f['carrier']} | {f['price']} | {f['stops']}")
+
+        btn_f.clicked.connect(do_flight_search)
+        row2.addWidget(flight_card, 1)
+
+        # 2. Budget Card
+        budget_card = Card()
+        budget_card.setFixedHeight(ROW2_HEIGHT)
+        bc_layout = QVBoxLayout(budget_card)
+        bc_layout.addWidget(QLabel("💰 Budget Breakdown", styleSheet="font-weight:bold; font-size:14px;"))
+        
+        # Simple Text Breakdown (Pie chart requires QtCharts which is complex to restore blindly)
+        self.lbl_budget = QLabel("Loading...")
+        self.lbl_budget.setWordWrap(True)
+        bc_layout.addWidget(self.lbl_budget)
+        
+        # Trigger Budget Worker
+        bw = BudgetWorker(self.api, plan_data.get("budget", "2000"))
+        bw.finished_signal.connect(lambda res: self.lbl_budget.setText("\n".join([f"{k}: {v}" for k,v in res.items()])))
+        self.start_worker(bw)
+
+        row2.addWidget(budget_card, 1)
+        
+        self.feed_layout.insertLayout(self.feed_layout.count()-1, row2)
 
         # --- ITINERARY ---
         for day in plan_data.get("itinerary", []):
@@ -223,11 +294,16 @@ class TripViewerView(QWidget):
             dl = QVBoxLayout(d_card)
             day_num = day.get('day')
             text = day.get('activity') or day.get('title') or "Activity"
-            dl.addWidget(QLabel(f"Day {day_num}: {text}"))
+            t_lbl = QLabel(f"Day {day_num}: {text}")
+            t_lbl.setWordWrap(True) # Wrap text!
+            t_lbl.setStyleSheet("font-weight:bold; font-size:14px;")
+            dl.addWidget(t_lbl)
             
             if "activities" in day and isinstance(day["activities"], list):
                 for act in day["activities"]:
-                    dl.addWidget(QLabel(f"• {act}"))
+                    a_lbl = QLabel(f"• {act}")
+                    a_lbl.setWordWrap(True) # Wrap text!
+                    dl.addWidget(a_lbl)
             
             self.feed_layout.insertWidget(self.feed_layout.count()-1, d_card)
 
@@ -235,58 +311,49 @@ class TripViewerView(QWidget):
             self.chat_history_state.append({"type": "plan", "content": {"title": title, "plan": plan_data}})
             self.save_state_to_server()
 
-    def trigger_image_generation(self, destination, interest, ver_id):
-        worker = ImageWorker(self.api, destination, interest)
-        worker.finished_signal.connect(lambda b64: self.render_image_in_placeholder(b64, ver_id))
-        self.start_worker(worker)
-
+    # --- IMAGE FALLBACK FIX ---
     def render_image_in_placeholder(self, b64, ver_id, save=True):
         l = self.image_placeholders.get(ver_id)
-        if l:
-            while l.count(): l.takeAt(0).widget().deleteLater()
+        if not l: return
+        while l.count(): l.takeAt(0).widget().deleteLater()
+        
+        pix = QPixmap()
+        loaded = False
+        
+        if b64:
+            try:
+                data = base64.b64decode(b64)
+                pix.loadFromData(QByteArray(data))
+                loaded = not pix.isNull()
+            except: pass
+
+        if not loaded:
+            # FIX: Robust Path Handling
+            base_dir = os.getcwd() # Typically Smart_Travel_Agent/client
+            path1 = os.path.join(base_dir, "assets", "globe_logo.png")
+            path2 = os.path.join(base_dir, "client", "assets", "globe_logo.png") # Adjust if running from root
             
-            # --- FALLBACK LOGIC ---
-            pix = QPixmap()
-            loaded = False
-            
-            if b64:
-                try:
-                    data = base64.b64decode(b64)
-                    pix.loadFromData(QByteArray(data))
-                    loaded = not pix.isNull()
-                except:
-                    print("Base64 Decode Error")
+            if os.path.exists(path1): pix.load(path1)
+            elif os.path.exists(path2): pix.load(path2)
+            else:
+                l.addWidget(QLabel("No Image\n(globe_logo.png missing)"))
+                return
 
-            if not loaded:
-                # Load fallback asset from client/assets/globe_logo.png
-                fallback_path = os.path.join("assets", "globe_logo.png")
-                if os.path.exists(fallback_path):
-                     pix.load(fallback_path)
-                else:
-                     # Absolute fallback if file missing
-                     l.addWidget(QLabel("No Image"))
-                     return
+        lbl = ClickableImage()
+        lbl.setPixmap(pix.scaled(140, 140, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+        lbl.setAlignment(Qt.AlignCenter)
+        lbl.clicked.connect(lambda: ImagePopup(pix).exec())
+        l.addWidget(lbl)
 
-            # Render the image (either AI or Fallback)
-            if not pix.isNull():
-                lbl = ClickableImage()
-                lbl.setPixmap(pix.scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation))
-                lbl.clicked.connect(lambda: ImagePopup(pix).exec())
-                l.addWidget(lbl)
-                l.setAlignment(Qt.AlignCenter)
-
-            if save and not self.is_loading_mode:
-                # Save the b64 content if valid, otherwise save nothing/flag
-                content_to_save = b64 if loaded else ""
-                self.chat_history_state.append({"type": "image", "content": content_to_save})
-                self.save_state_to_server()
+        if save and not self.is_loading_mode:
+            content = b64 if loaded else ""
+            self.chat_history_state.append({"type": "image", "content": content})
+            self.save_state_to_server()
 
     def fetch_weather(self, dest):
-        # This will call the REAL weather logic now
         if ver_id := self.current_active_ver_id:
             lbl = self.weather_labels.get(ver_id)
             if lbl: lbl.setText("Loading...")
-            
         w = WeatherWorker(self.api, dest)
         w.finished_signal.connect(self.update_weather_ui)
         self.start_worker(w)
@@ -295,10 +362,7 @@ class TripViewerView(QWidget):
         if not self.current_active_ver_id: return
         lbl = self.weather_labels.get(self.current_active_ver_id)
         if lbl and data:
-            icon = data.get("icon", "")
-            temp = data.get("temp", 0)
-            desc = data.get("desc", "")
-            lbl.setText(f"{icon} {temp}°C\n{desc}")
+            lbl.setText(f"{data.get('icon','')} {data.get('temp',0)}°C\n{data.get('desc','')}")
 
     def on_send(self):
         msg = self.chat_input.text(); self.chat_input.clear()
@@ -324,7 +388,8 @@ class TripViewerView(QWidget):
              self.add_bubble("Failed to refine plan.", False)
 
     def add_bubble(self, text, is_user, save=True):
-        lbl = QLabel(text); lbl.setStyleSheet(f"background: {'#e3f2fd' if is_user else 'white'}; padding: 10px; border-radius: 10px;")
+        lbl = QLabel(text); lbl.setWordWrap(True) # Wrap Chat!
+        lbl.setStyleSheet(f"background: {'#e3f2fd' if is_user else 'white'}; padding: 10px; border-radius: 10px;")
         self.feed_layout.insertWidget(self.feed_layout.count()-1, lbl)
         if save and not self.is_loading_mode:
             self.chat_history_state.append({"type": "text", "content": text, "is_user": is_user})
@@ -339,9 +404,23 @@ class TripViewerView(QWidget):
         w = self.trip_widgets_map.get(id(item))
         if w: self.scroll_area.ensureWidgetVisible(w)
         
+    # --- PDF FIX ---
     def save_pdf(self):
-        if generate_trip_pdf:
-            generate_trip_pdf(self.current_plan_data, "trip.pdf")
-            QMessageBox.information(self, "PDF", "Saved!")
-        else:
+        if not generate_trip_pdf:
             QMessageBox.warning(self, "Error", "PDF Module missing")
+            return
+            
+        # 1. Ask user where to save
+        filename, _ = QFileDialog.getSaveFileName(self, "Save Trip PDF", f"Trip_Plan.pdf", "PDF Files (*.pdf)")
+        
+        if filename:
+            try:
+                generate_trip_pdf(self.current_plan_data, filename)
+                QMessageBox.information(self, "Success", "PDF Saved!")
+                
+                # 2. Open it automatically
+                import os
+                if os.name == 'nt': os.startfile(filename)
+                
+            except Exception as e:
+                QMessageBox.critical(self, "Error", f"Failed to save PDF:\n{str(e)}")
