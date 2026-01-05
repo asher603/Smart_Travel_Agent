@@ -11,7 +11,7 @@ Terminal 1 - Docker Engine:
         'docker-compose down'
     Verify Active:
         http://localhost:8000/docs in your browser
-    Reload with Code Changes:
+    Reactivate after Code Changes (Force Docker Updates):
         docker-compose up --build --force-recreate
 
 Terminal 2 - Client Screens:
