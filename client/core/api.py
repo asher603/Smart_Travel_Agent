@@ -8,7 +8,7 @@ class APIService:
     def post(self, endpoint, data):
         """Generic POST request wrapper"""
         try:
-            # Ensure endpoint starts with / if not present
+            # Ensure endpoint starts with / 
             if not endpoint.startswith("/"):
                 endpoint = f"/{endpoint}"
                 
@@ -37,3 +37,7 @@ class APIService:
     def generate_trip(self, payload):
         """Sends trip requirements to the backend"""
         return self.post("/trips/generate", payload)
+    
+    def get_weather(self, destination):
+        # Return mock directly or call server
+        return {"temp": 24, "desc": "Partly Cloudy", "icon": "⛅"}

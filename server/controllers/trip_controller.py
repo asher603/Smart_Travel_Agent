@@ -25,6 +25,21 @@ class HistoryRequest(BaseModel):
 class TripIdRequest(BaseModel):
     trip_id: str
 
+class FlightRequest(BaseModel):
+    origin: str = "Unknown"  # Use alias='from' in pydantic if needed, but client sends "from"
+    to: str
+    date: str
+
+    class Config:
+        fields = {'origin': 'from'} # Map 'from' JSON field to 'origin' python var
+
+class BudgetRequest(BaseModel):
+    budget: str
+
+class UpdateStateRequest(BaseModel):
+    trip_id: str
+    chat_history: list
+
 # Router with prefix matches client calls (e.g. /trips/generate)
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
@@ -140,3 +155,31 @@ async def get_trip_details(req: TripIdRequest):
 async def delete_trip(req: TripIdRequest):
     # Mock Success
     return {"status": "success"}
+
+@router.post("/flights")
+async def get_flights(req: FlightRequest):
+    # Mock Flight Data
+    return {
+        "flights": [
+            {"carrier": "MockAir", "dep": "10:00", "arr": "14:00", "price": "$120", "stops": "Direct"},
+            {"carrier": "PyPlane", "dep": "16:30", "arr": "20:45", "price": "$95", "stops": "1 Stop"}
+        ]
+    }
+
+@router.post("/analyze_budget")
+async def analyze_budget(req: BudgetRequest):
+    # Mock Budget Breakdown
+    return {
+        "breakdown": {
+            "Flights": "30%",
+            "Accommodation": "40%",
+            "Food": "20%",
+            "Activities": "10%"
+        }
+    }
+
+@router.post("/update_state")
+async def update_trip_state(req: UpdateStateRequest):
+    # This would normally save to MongoDB
+    print(f"💾 Saving state for Trip {req.trip_id}: {len(req.chat_history)} items")
+    return {"status": "saved"}

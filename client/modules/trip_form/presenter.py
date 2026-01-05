@@ -20,21 +20,20 @@ class TripFormPresenter(QObject):
         print(f"📝 Presenter received form data: {data}")
         self.view.show_loading(True)
 
-        # 1. Update Model (Optional, if you want to store state)
+        # 1. Update Model
         self.model.destination = data.get("destination")
-        self.model.start_date = data.get("start_date") # Already a String!
-        self.model.end_date = data.get("end_date")     # Already a String!
+        self.model.start_date = data.get("start_date")
+        self.model.end_date = data.get("end_date")
         
         # 2. Prepare Payload
-        # FIX: Send data directly. Do NOT use strftime() here.
         payload = {
             "destination": data.get("destination"),
             "origin": data.get("origin"),
             "budget": data.get("budget"),
             "currency": data.get("currency"),
             "interests": data.get("interests"),
-            "start_date": data.get("start_date"), # <--- Just use the string
-            "end_date": data.get("end_date")      # <--- Just use the string
+            "start_date": data.get("start_date"),
+            "end_date": data.get("end_date")
         }
 
         # 3. Call API
