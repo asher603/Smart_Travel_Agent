@@ -1,11 +1,12 @@
 import base64
+import os
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QLineEdit, QComboBox, QScrollArea, QFrame, QSplitter, 
     QListWidget, QListWidgetItem, QDialog, QMessageBox, QDateEdit
 )
 from PySide6.QtCore import Qt, Signal, QByteArray, QTimer, QDate
-from PySide6.QtGui import QPixmap, QImage, QPainter, QPainterPath
+from PySide6.QtGui import QPixmap, QImage
 
 # --- IMPORT WORKERS ---
 from .workers import (
@@ -13,7 +14,7 @@ from .workers import (
     WeatherWorker, FlightWorker, BudgetWorker, RefineWorker
 )
 
-# --- SAFETY IMPORTS ---
+# --- IMPORTS (Safety Checks) ---
 try:
     from components import GlassCard as Card
 except ImportError:
@@ -190,14 +191,35 @@ class TripViewerView(QWidget):
         self.feed_layout.insertWidget(self.feed_layout.count()-1, lbl)
         self.trip_widgets_map[id(item)] = lbl
         
-        # --- Image Placeholder ---
-        img_layout = QVBoxLayout(); self.image_placeholders[ver_id] = img_layout
-        card = QFrame(); card.setLayout(img_layout); card.setStyleSheet("border: 1px dashed #ccc; min-height: 100px;")
-        self.feed_layout.insertWidget(self.feed_layout.count()-1, card)
+        # --- DASHBOARD ROW (Image | Weather) ---
+        dash_layout = QHBoxLayout()
+        dash_layout.setSpacing(10)
         
-        # --- Itinerary Render (Basic) ---
+        # 1. Image Card
+        img_layout = QVBoxLayout(); self.image_placeholders[ver_id] = img_layout
+        card_img = Card(); card_img.setLayout(img_layout)
+        card_img.setFixedSize(140, 140) # Keep square
+        dash_layout.addWidget(card_img)
+
+        # 2. Weather Card
+        card_weather = Card(); card_weather.setFixedHeight(140)
+        w_layout = QVBoxLayout(card_weather); w_layout.setContentsMargins(15,15,15,15)
+        
+        lbl_city = QLabel(plan_data.get("destination", "Location").upper())
+        lbl_city.setStyleSheet("font-size:12px; font-weight:bold; color:#555;")
+        
+        lbl_temp = QLabel("--"); self.weather_labels[ver_id] = lbl_temp
+        lbl_temp.setStyleSheet("font-size:20px; font-weight:bold; color:#0277bd;")
+        
+        w_layout.addWidget(lbl_city); w_layout.addWidget(lbl_temp)
+        dash_layout.addWidget(card_weather)
+
+        self.feed_layout.insertLayout(self.feed_layout.count()-1, dash_layout)
+
+        # --- ITINERARY ---
         for day in plan_data.get("itinerary", []):
-            d_card = QFrame(); d_card.setStyleSheet("background:white; border-radius:10px; padding:10px; margin-top:5px;")
+            d_card = Card()
+            d_card.setStyleSheet("background:white; border-radius:10px; padding:10px; margin-top:5px;")
             dl = QVBoxLayout(d_card)
             day_num = day.get('day')
             text = day.get('activity') or day.get('title') or "Activity"
@@ -222,24 +244,61 @@ class TripViewerView(QWidget):
         l = self.image_placeholders.get(ver_id)
         if l:
             while l.count(): l.takeAt(0).widget().deleteLater()
+            
+            # --- FALLBACK LOGIC ---
+            pix = QPixmap()
+            loaded = False
+            
             if b64:
                 try:
                     data = base64.b64decode(b64)
-                    pix = QPixmap(); pix.loadFromData(QByteArray(data))
-                    lbl = QLabel(); lbl.setPixmap(pix.scaled(400, 300, Qt.KeepAspectRatio))
-                    l.addWidget(lbl)
+                    pix.loadFromData(QByteArray(data))
+                    loaded = not pix.isNull()
                 except:
-                    l.addWidget(QLabel("Image Error"))
-            else:
-                l.addWidget(QLabel("No Image Available"))
-            
+                    print("Base64 Decode Error")
+
+            if not loaded:
+                # Load fallback asset from client/assets/globe_logo.png
+                fallback_path = os.path.join("assets", "globe_logo.png")
+                if os.path.exists(fallback_path):
+                     pix.load(fallback_path)
+                else:
+                     # Absolute fallback if file missing
+                     l.addWidget(QLabel("No Image"))
+                     return
+
+            # Render the image (either AI or Fallback)
+            if not pix.isNull():
+                lbl = ClickableImage()
+                lbl.setPixmap(pix.scaled(120, 120, Qt.KeepAspectRatio, Qt.SmoothTransformation))
+                lbl.clicked.connect(lambda: ImagePopup(pix).exec())
+                l.addWidget(lbl)
+                l.setAlignment(Qt.AlignCenter)
+
             if save and not self.is_loading_mode:
-                self.chat_history_state.append({"type": "image", "content": b64})
+                # Save the b64 content if valid, otherwise save nothing/flag
+                content_to_save = b64 if loaded else ""
+                self.chat_history_state.append({"type": "image", "content": content_to_save})
                 self.save_state_to_server()
 
     def fetch_weather(self, dest):
+        # This will call the REAL weather logic now
+        if ver_id := self.current_active_ver_id:
+            lbl = self.weather_labels.get(ver_id)
+            if lbl: lbl.setText("Loading...")
+            
         w = WeatherWorker(self.api, dest)
+        w.finished_signal.connect(self.update_weather_ui)
         self.start_worker(w)
+
+    def update_weather_ui(self, data):
+        if not self.current_active_ver_id: return
+        lbl = self.weather_labels.get(self.current_active_ver_id)
+        if lbl and data:
+            icon = data.get("icon", "")
+            temp = data.get("temp", 0)
+            desc = data.get("desc", "")
+            lbl.setText(f"{icon} {temp}°C\n{desc}")
 
     def on_send(self):
         msg = self.chat_input.text(); self.chat_input.clear()
@@ -252,7 +311,6 @@ class TripViewerView(QWidget):
             w.finished_signal.connect(lambda ans: self.add_bubble(ans, False))
             self.start_worker(w)
         else:
-            # Refine Trip
             self.add_bubble("Refining Plan...", False)
             w = RefineWorker(self.api, self.current_plan_data, msg)
             w.finished.connect(lambda res: self.on_refine_done(res, msg))

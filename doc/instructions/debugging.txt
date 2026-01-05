@@ -3,7 +3,7 @@ Debugging Instructions:
 Open 2 terminals, with your virtual environment (venv) active.
 
 Terminal 1 - Docker Engine:
-    Activation:
+    Activation (Regular Option):
         'docker-compose up --build'
     Exit:
         Ctrl + C
@@ -11,6 +11,8 @@ Terminal 1 - Docker Engine:
         'docker-compose down'
     Verify Active:
         http://localhost:8000/docs in your browser
+    Reload with Code Changes:
+        docker-compose up --build --force-recreate
 
 Terminal 2 - Client Screens:
     Activation:

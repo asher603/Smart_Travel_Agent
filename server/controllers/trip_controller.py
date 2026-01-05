@@ -170,17 +170,24 @@ async def update_trip_state(req: UpdateStateRequest):
 # --- 4. UTILITIES ---
 @router.post("/flights")
 async def get_flights(req: FlightRequest):
+    """Returns mock flight data so the UI List populates"""
     return {
         "flights": [
-             {"carrier": "System Estimate", "dep": "TBD", "arr": "TBD", "price": "Check Operator", "stops": "N/A"}
+             {"carrier": "El Al", "dep": "10:00", "arr": "14:00", "price": "$320", "stops": "Direct"},
+             {"carrier": "British Airways", "dep": "16:30", "arr": "20:45", "price": "$410", "stops": "1 Stop via LHR"},
+             {"carrier": "Air France", "dep": "08:15", "arr": "12:30", "price": "$290", "stops": "Direct"}
         ]
     }
 
 @router.post("/analyze_budget")
 async def analyze_budget(req: BudgetRequest):
-    async with httpx.AsyncClient() as client:
-        try:
-            resp = await client.post(f"{settings.AI_SERVICE_URL}/analyze_budget", json={"budget": req.budget})
-            if resp.status_code == 200: return resp.json()
-        except: pass
-    return {"breakdown": {"Allocated": "100%", "Notes": "AI Service Unavailable"}}
+    """Returns a static breakdown so the Pie Chart renders"""
+    # In a real app, you would parse req.budget and calculate percentages
+    return {
+        "breakdown": {
+            "Flights": "35%",
+            "Accommodation": "40%",
+            "Food": "15%",
+            "Activities": "10%"
+        }
+    }
