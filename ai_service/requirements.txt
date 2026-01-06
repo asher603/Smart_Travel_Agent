@@ -7,7 +7,7 @@ python-dotenv
 fastapi
 uvicorn
 transformers
-torch
 pydantic
 pydantic-settings
 huggingface_hub
+Pillow

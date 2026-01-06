@@ -7,21 +7,19 @@ from ai_service.schemas.api_models import TripRequest
 
 class TravelAgent:
     def __init__(self):
-        # Use our Factory which wraps the settings logic
-        # We use 'invoke' method of the manager which handles fallback logic
         self.manager = llm_manager
 
     def _search_web(self, query):
         try:
             results = DDGS().text(query, max_results=3)
             return "\n".join([f"- {r['title']}: {r['body']}" for r in results]) if results else "No data."
-        except: return "Search unavailable."
+        except: return "Search unavailable (Offline Mode)."
 
     async def plan_trip(self, req: TripRequest, analyzed_vibe: str):
-        # 1. RAG
+        # 1. Web Search (Will gracefully fail if offline)
         flight_info = self._search_web(f"flights from {req.origin} to {req.destination} price {req.currency}")
 
-        # 2. Prompt
+        # 2. Define Prompt
         prompt = ChatPromptTemplate.from_messages([
             ("system", "You are an expert travel agent. Output valid JSON only."),
             ("user", """
@@ -41,18 +39,27 @@ class TravelAgent:
              """)
         ])
 
-        # 3. Execution (Using the Factory's LLM)
-        # We need the actual LLM object for the chain, or we wrap the chain execution.
-        # For simplicity with LangChain chains, we get the primary model object from the factory.
-        llm = self.manager._get_primary_model()
+        # 3. Execution with Fallback Strategy
+        # במקום לבנות שרשרת עם מודל בודד, אנחנו מפרמטים את ההודעות
+        # ושולחים אותן ל-Manager שיודע לנסות את כל המודלים לפי הסדר
         
-        chain = prompt | llm | JsonOutputParser()
+        messages = prompt.format_messages(
+            duration=req.duration, 
+            origin=req.origin, 
+            destination=req.destination,
+            budget=req.budget, 
+            currency=req.currency, 
+            interest=req.interest,
+            vibe=analyzed_vibe, 
+            flight_info=flight_info
+        )
         
-        result = await chain.ainvoke({
-            "duration": req.duration, "origin": req.origin, "destination": req.destination,
-            "budget": req.budget, "currency": req.currency, "interest": req.interest,
-            "vibe": analyzed_vibe, "flight_info": flight_info
-        })
+        # כאן קורה הקסם: אם גוגל נכשל, ה-Manager יעבור אוטומטית ל-Groq ואז ל-Ollama
+        response_message = await self.manager.invoke(messages)
+        
+        # 4. Parse the result
+        parser = JsonOutputParser()
+        result = parser.parse(response_message.content)
         
         result["analyzed_vibe"] = analyzed_vibe
         return result

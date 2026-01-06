@@ -15,6 +15,12 @@ class Settings(BaseSettings):
     # Model Configs
     PRIMARY_LLM_MODEL: str = "gemini-2.5-flash"
     BACKUP_LLM_MODEL: str = "llama-3.3-70b-versatile"
+    
+    # --- ADDED: Ollama Local Fallback ---
+    # The hostname 'ollama' comes from the docker-compose service name
+    OLLAMA_BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://ollama:11434")
+    LOCAL_LLM_MODEL: str = "llama3.1"
+    
     HF_VIBE_MODEL: str = "facebook/bart-large-mnli"
     HF_IMAGE_MODEL: str = "black-forest-labs/FLUX.1-schnell"
 

@@ -1,17 +1,19 @@
 FROM python:3.10-slim
 
-# 1. Setup the environment
 WORKDIR /app
+
+# 1. התקנת גרסת CPU של PyTorch בנפרד (מונע הורדה של דרייברים ענקיים של NVIDIA)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu
+
+# 2. העתקת שאר התלויות והתקנתן
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 2. Copy code into a SUBDIRECTORY to preserve "ai_service" package name
+# 3. העתקת הקוד
 COPY . ./ai_service
 
-# 3. Add /app to PYTHONPATH so imports like "from ai_service..." work
+# 4. הגדרות סביבה והרצה
 ENV PYTHONPATH=/app
-
 EXPOSE 8002
 
-# 4. Run the module using the folder name
 CMD ["uvicorn", "ai_service.main:app", "--host", "0.0.0.0", "--port", "8002"]

@@ -50,6 +50,13 @@ services:
       - GROQ_API_KEY=${GROQ_API_KEY}
       - HF_TOKEN=${HF_TOKEN}
       - HUGGINGFACE_API_KEY=${HF_TOKEN}
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+    # --- הוספת DNS לפתרון בעיות חיבור ---
+    dns:
+      - 8.8.8.8
+      - 8.8.4.4
 
   # -----------------------------
   # 4. DATA SERVICE (Event Store + DB)
@@ -72,3 +79,20 @@ services:
       # Connection string injected from .env
       - MONGODB_URI=${MONGODB_URI}
       - DATABASE_NAME=smart_travel_agent_db
+
+  # -----------------------------
+  # 5. OLLAMA (Local LLM Service)
+  # Port: 11434
+  # -----------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: smart_travel_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
+# ווליום לשמירת המודלים של Ollama (כדי שלא תצטרך להוריד מחדש בכל ריצה)
+volumes:
+  ollama_data:
