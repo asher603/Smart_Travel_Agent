@@ -1,7 +1,7 @@
 import requests
 from PySide6.QtCore import QThread, Signal
 
-# --- RESTORED WORKERS (החזרנו את המחלקות החסרות) ---
+# --- WORKERS ---
 
 class ImageWorker(QThread):
     finished_signal = Signal(str) 
@@ -49,19 +49,29 @@ class BudgetWorker(QThread):
         resp = self.api.post("/trips/analyze_budget", {"budget": self.budget})
         self.finished_signal.emit(resp.get("breakdown", {}) if resp else {})
 
+# --- FIX: RefineWorker Updated ---
 class RefineWorker(QThread):
     finished = Signal(dict)
-    def __init__(self, api, plan, instr):
-        super().__init__(); self.api = api; self.plan = plan; self.instr = instr
-    def run(self):
-        self.finished.emit(self.api.post("/trips/refine", {"current_plan": self.plan, "instruction": self.instr}))
+    # Added trip_id to constructor
+    def __init__(self, api, trip_id, plan, instr):
+        super().__init__()
+        self.api = api
+        self.trip_id = trip_id
+        self.plan = plan
+        self.instr = instr
 
-# --- FIXED FLIGHT WORKER (התיקון לטיסות) ---
+    def run(self):
+        # FIX: Structure matches server expectation (trip_id + instructions plural)
+        payload = {
+            "trip_id": self.trip_id,
+            "current_plan": self.plan,
+            "instructions": self.instr
+        }
+        self.finished.emit(self.api.post("/trips/refine", payload))
 
 class FlightWorker(QThread):
     finished_signal = Signal(list)
     
-    # שמרנו על המבנה המקורי שה-View מצפה לו
     def __init__(self, api, origin, dest, date):
         super().__init__()
         self.api = api
@@ -70,11 +80,15 @@ class FlightWorker(QThread):
         self.date = date
 
     def run(self):
-        # 1. מנגנון הגנה (Fallback)
-        # אם הנתונים ריקים (None), נשתמש בברירת מחדל כדי שהשרת לא יקרוס (שגיאה 422)
+        # 1. Fallback & Validation
         search_to = self.dest if self.dest else "London"
-        search_date = self.date if self.date else "2025-06-01" # תאריך עתידי
+        search_date = self.date if self.date else "2025-06-01"
         search_from = self.origin if self.origin else "Tel Aviv"
+
+        # Prevent Origin == Destination error
+        if search_from.strip().lower() == search_to.strip().lower():
+            print(f"⚠️ FlightWorker: Origin same as Dest ({search_from}). Defaulting to Tel Aviv.")
+            search_from = "Tel Aviv"
 
         print(f"✈️ FlightWorker: Searching {search_from} -> {search_to} on {search_date}")
 
@@ -84,15 +98,13 @@ class FlightWorker(QThread):
             "date": search_date
         }
 
-        # 2. שליחה לשרת
+        # 2. Call Server
         try:
             resp = self.api.post("/trips/flights", payload)
             
-            # 3. טיפול בתשובה
             if resp and "flights" in resp:
                 self.finished_signal.emit(resp["flights"])
             else:
-                print(f"FlightWorker: No flights found or error. Resp: {resp}")
                 self.finished_signal.emit([])
                 
         except Exception as e:

@@ -1,5 +1,5 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 class TripRequest(BaseModel):
     destination: str
@@ -7,7 +7,7 @@ class TripRequest(BaseModel):
     duration: int
     budget: int
     currency: str = "USD"
-    interest: str  # User's raw text (e.g., "I love spicy food and history")
+    interest: str
 
 class BudgetBreakdown(BaseModel):
     flights: int = Field(alias="Flights")
@@ -23,6 +23,16 @@ class DayActivity(BaseModel):
 
 class TripResponse(BaseModel):
     summary: str
-    analyzed_vibe: str  # <--- Added by Hugging Face
+    analyzed_vibe: str
     budget_breakdown: BudgetBreakdown
     itinerary: List[DayActivity]
+
+# --- New Models for Chat & Refine ---
+class ChatRequest(BaseModel):
+    question: str
+    context: str
+
+class RefineRequest(BaseModel):
+    trip_id: Optional[str] = None
+    instructions: str
+    current_plan: Dict[str, Any]

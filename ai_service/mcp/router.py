@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from ai_service.schemas.api_models import TripRequest, TripResponse
+from ai_service.schemas.api_models import TripRequest, TripResponse, ChatRequest, RefineRequest
 from ai_service.core.security import security_guard
 from ai_service.ml_models.analyzer import analyze_user_vibe
 from ai_service.ml_models.image_generator import generate_trip_image
@@ -9,7 +9,7 @@ from ai_service.agents.travel_agent import TravelAgent
 agent = TravelAgent()
 router = APIRouter()
 
-@router.post("/generate_trip") # Response Model can be added if schemas match perfectly
+@router.post("/generate_trip")
 async def generate_trip(request: TripRequest):
     print(f"📨 AI Service: Processing request for {request.destination}")
 
@@ -19,21 +19,37 @@ async def generate_trip(request: TripRequest):
         print(f"🚫 Security Block: {security_check['reason']}")
         raise HTTPException(status_code=400, detail=f"Security Alert: {security_check['reason']}")
 
-    # 2. Vibe Analysis (Hugging Face)
+    # 2. Vibe Analysis
     vibe = analyze_user_vibe(request.interest)
     print(f"🧠 Analyzed Vibe: {vibe}")
 
-    # 3. Plan Trip (LangChain Agent)
+    # 3. Plan Trip
     try:
         plan = await agent.plan_trip(request, vibe)
     except Exception as e:
         print(f"❌ Planning Error: {e}")
         raise HTTPException(status_code=500, detail="Failed to generate trip plan")
 
-    # 4. Image Generation (Hugging Face FLUX)
-    # Note: We return the image separately or embedded. 
-    # Here we embed it into the response dictionary for simplicity.
+    # 4. Image Generation
     image_b64 = generate_trip_image(request.destination, vibe)
     plan["image_base64"] = image_b64
 
     return plan
+
+@router.post("/chat")
+async def chat(request: ChatRequest):
+    print(f"💬 Chat Request: {request.question}")
+    try:
+        return await agent.chat(request)
+    except Exception as e:
+        print(f"❌ Chat Error: {e}")
+        return {"answer": "Sorry, I'm having trouble thinking right now."}
+
+@router.post("/refine_trip")
+async def refine_trip(request: RefineRequest):
+    print(f"♻️ Refine Request: {request.instructions}")
+    try:
+        return await agent.refine_trip(request)
+    except Exception as e:
+        print(f"❌ Refine Error: {e}")
+        raise HTTPException(status_code=500, detail="Failed to refine trip")

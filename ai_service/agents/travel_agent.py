@@ -3,7 +3,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.messages import HumanMessage
 from duckduckgo_search import DDGS
 from ai_service.core.llm_factory import llm_manager
-from ai_service.schemas.api_models import TripRequest
+from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest
 
 class TravelAgent:
     def __init__(self):
@@ -16,7 +16,7 @@ class TravelAgent:
         except: return "Search unavailable (Offline Mode)."
 
     async def plan_trip(self, req: TripRequest, analyzed_vibe: str):
-        # 1. Web Search (Will gracefully fail if offline)
+        # 1. Web Search
         flight_info = self._search_web(f"flights from {req.origin} to {req.destination} price {req.currency}")
 
         # 2. Define Prompt
@@ -39,10 +39,6 @@ class TravelAgent:
              """)
         ])
 
-        # 3. Execution with Fallback Strategy
-        # במקום לבנות שרשרת עם מודל בודד, אנחנו מפרמטים את ההודעות
-        # ושולחים אותן ל-Manager שיודע לנסות את כל המודלים לפי הסדר
-        
         messages = prompt.format_messages(
             duration=req.duration, 
             origin=req.origin, 
@@ -54,12 +50,33 @@ class TravelAgent:
             flight_info=flight_info
         )
         
-        # כאן קורה הקסם: אם גוגל נכשל, ה-Manager יעבור אוטומטית ל-Groq ואז ל-Ollama
         response_message = await self.manager.invoke(messages)
-        
-        # 4. Parse the result
         parser = JsonOutputParser()
         result = parser.parse(response_message.content)
-        
         result["analyzed_vibe"] = analyzed_vibe
         return result
+
+    async def chat(self, req: ChatRequest):
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a helpful travel assistant. Answer short and concise."),
+            ("user", "Context of trip: {context}\n\nUser Question: {question}")
+        ])
+        messages = prompt.format_messages(context=req.context, question=req.question)
+        response = await self.manager.invoke(messages)
+        return {"answer": response.content}
+
+    async def refine_trip(self, req: RefineRequest):
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a travel agent. Update the JSON trip plan based on user instructions. Output ONLY JSON."),
+            ("user", """
+             Current Plan: {current_plan}
+             User Update Instructions: {instructions}
+             
+             Return the fully updated JSON structure (same format as before).
+             """)
+        ])
+        messages = prompt.format_messages(current_plan=str(req.current_plan), instructions=req.instructions)
+        response = await self.manager.invoke(messages)
+        
+        parser = JsonOutputParser()
+        return parser.parse(response.content)

@@ -89,8 +89,6 @@ async def generate_trip(req: GenerateTripRequest):
             plan_data = ai_resp.json()
             
             # --- FIX: Inject Metadata into Plan ---
-            # ה-AI לא תמיד מחזיר את השדות האלה, אז אנחנו מוסיפים אותם ידנית
-            # כדי שה-Client יוכל להשתמש בהם (במיוחד לחיפוש טיסות)
             plan_data["origin"] = req.origin
             plan_data["destination"] = req.destination
             plan_data["start_date"] = req.start_date
@@ -115,7 +113,7 @@ async def generate_trip(req: GenerateTripRequest):
                     "trip_id": new_trip_id,
                     "username": req.username, 
                     "destination": req.destination,
-                    "origin": req.origin,  # <-- Saving origin explicitly to DB for history
+                    "origin": req.origin, 
                     "initial_request": req.dict(),
                     "generated_plan": plan_data
                 }
@@ -127,18 +125,48 @@ async def generate_trip(req: GenerateTripRequest):
 
         return {"status": "success", "trip": plan_data}
 
-# --- 2. REFINE TRIP ---
+# --- 2. REFINE TRIP (FIXED) ---
 @router.post("/refine")
 async def refine_trip(req: RefineTripRequest):
+    """
+    Handles request to refine/edit an existing trip plan.
+    """
+    print(f"♻️ Refining Trip {req.trip_id} with instruction: {req.instructions}")
+    
     async with httpx.AsyncClient() as client:
         try:
-            response = await client.post(
+            # 1. Call AI Service
+            ai_resp = await client.post(
                 f"{settings.AI_SERVICE_URL}/refine_trip",
                 json=req.dict(),
                 timeout=60.0
             )
-            return response.json()
+            
+            # 2. Check for AI Service Errors
+            if ai_resp.status_code != 200:
+                error_msg = ai_resp.text
+                print(f"❌ AI Refine Error ({ai_resp.status_code}): {error_msg}")
+                raise HTTPException(status_code=ai_resp.status_code, detail=f"AI Error: {error_msg}")
+
+            # 3. Parse Response
+            refined_plan = ai_resp.json()
+            
+            # 4. Inject Metadata (AI might drop these, but UI needs them)
+            if "origin" not in refined_plan and "origin" in req.current_plan:
+                refined_plan["origin"] = req.current_plan["origin"]
+            if "destination" not in refined_plan and "destination" in req.current_plan:
+                refined_plan["destination"] = req.current_plan["destination"]
+            if "start_date" not in refined_plan and "start_date" in req.current_plan:
+                refined_plan["start_date"] = req.current_plan["start_date"]
+
+            # 5. Return in the format Client expects
+            return {"status": "success", "trip_plan": refined_plan}
+
+        except httpx.ReadTimeout:
+            print("❌ Refine Timed Out")
+            raise HTTPException(status_code=504, detail="Refinement timed out. Try again.")
         except Exception as e:
+            print(f"❌ Refine Controller Crash: {e}")
             raise HTTPException(status_code=500, detail=f"Refinement Failed: {str(e)}")
 
 # --- 3. HISTORY & DETAILS ---

@@ -407,6 +407,7 @@ class TripViewerView(QWidget):
         elif lbl:
              lbl.setText("N/A")
 
+    # --- FIX: Pass trip_id to RefineWorker ---
     def on_send(self):
         msg = self.chat_input.text(); self.chat_input.clear()
         if not msg: return
@@ -419,7 +420,8 @@ class TripViewerView(QWidget):
             self.start_worker(w)
         else:
             self.add_bubble("Refining Plan...", False)
-            w = RefineWorker(self.api, self.current_plan_data, msg)
+            # FIX: Sending self.trip_id to the worker!
+            w = RefineWorker(self.api, self.trip_id, self.current_plan_data, msg)
             w.finished.connect(lambda res: self.on_refine_done(res, msg))
             self.start_worker(w)
 
