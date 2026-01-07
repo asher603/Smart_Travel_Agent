@@ -9,6 +9,21 @@ class FlightService:
         self.client_secret = settings.AMADEUS_SECRET
         self._token = None
         self._token_expiry = datetime.datetime.now()
+        
+        # Cache / Fallback for common cities to avoid API errors
+        self.STATIC_CODES = {
+            "TEL AVIV": "TLV",
+            "LONDON": "LON",
+            "PARIS": "PAR",
+            "NEW YORK": "NYC",
+            "AMSTERDAM": "AMS",
+            "ROME": "ROM",
+            "BARCELONA": "BCN",
+            "BERLIN": "BER",
+            "TOKYO": "TYO",
+            "DUBAI": "DXB",
+            "BANGKOK": "BKK"
+        }
 
     def _get_token(self):
         """ Handles OAuth2 authentication to get/refresh access token """
@@ -40,9 +55,11 @@ class FlightService:
         1. Converts city names to codes.
         2. Searches for flights.
         """
-        # Step 1: Convert Names to Codes
-        origin_code = self.get_city_code(origin_city)
-        dest_code = self.get_city_code(destination_city)
+        # Step 1: Convert Names to Codes (Handle case sensitivity)
+        origin_code = self.get_city_code(str(origin_city).strip())
+        dest_code = self.get_city_code(str(destination_city).strip())
+
+        print(f"DEBUG: Converted '{origin_city}' -> {origin_code}, '{destination_city}' -> {dest_code}")
 
         if not origin_code or not dest_code:
             return {"error": f"Could not find airport codes for {origin_city} or {destination_city}"}
@@ -76,6 +93,15 @@ class FlightService:
         """ 
         Converts a city name (e.g., "Paris") to an IATA code (e.g., "PAR").
         """
+        # 1. Clean and standardize input
+        if not city_name: return None
+        clean_name = city_name.strip().upper()
+
+        # 2. Check Static Fallback first (Fast & Reliable)
+        if clean_name in self.STATIC_CODES:
+            return self.STATIC_CODES[clean_name]
+
+        # 3. Use API if not found in static list
         token = self._get_token()
         if not token: return None
 
@@ -84,7 +110,7 @@ class FlightService:
             headers = {"Authorization": f"Bearer {token}"}
             params = {
                 "subType": "CITY", 
-                "keyword": city_name,
+                "keyword": clean_name, # Send UPPERCASE to API
                 "page[limit]": 1
             }
             
@@ -92,7 +118,7 @@ class FlightService:
             data = response.json()
             
             if data and 'data' in data and len(data['data']) > 0:
-                return data['data'][0]['iataCode'] # Returns 'PAR' for Paris
+                return data['data'][0]['iataCode'] 
                 
         except Exception as e:
             print(f"Code Lookup Error: {e}")

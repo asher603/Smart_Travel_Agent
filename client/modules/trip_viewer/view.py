@@ -152,7 +152,7 @@ class TripViewerView(QWidget):
         self.current_plan_data = plan
         self.btn_pdf.setVisible(True)
         self.render_trip_block("Initial Plan", plan, is_new=True)
-        # This call was failing because the method was missing:
+        # Trigger Image Gen
         self.trigger_image_generation(dest, "travel", self.trip_counter)
         self.fetch_weather(dest)
 
@@ -248,30 +248,46 @@ class TripViewerView(QWidget):
         row2.setSpacing(10)
         ROW2_HEIGHT = 220
 
-        # 1. Flights
+        # 1. Flights (UPDATED SECTION)
         flight_card = Card()
         flight_card.setFixedHeight(ROW2_HEIGHT)
         fc_layout = QVBoxLayout(flight_card)
         fc_layout.addWidget(QLabel("✈️ Flights", styleSheet="font-weight:bold; font-size:14px; color:#333;"))
         
-        f_in_layout = QHBoxLayout()
-        f_origin = QLineEdit(); f_origin.setPlaceholderText("From (e.g. London)")
-        if plan_data.get("origin"): f_origin.setText(plan_data.get("origin"))
-        btn_f = QPushButton("Search"); btn_f.setCursor(Qt.PointingHandCursor)
-        f_in_layout.addWidget(f_origin); f_in_layout.addWidget(btn_f)
-        fc_layout.addLayout(f_in_layout)
+        # Get origin directly from plan, default to Tel Aviv if missing
+        origin_city = plan_data.get("origin", "Tel Aviv")
+
+        # Removed the QLineEdit, keeping only the button
+        btn_f = QPushButton(f"🔎 Check Flights from {origin_city}")
+        btn_f.setCursor(Qt.PointingHandCursor)
+        btn_f.setStyleSheet("""
+            QPushButton {
+                background-color: #e3f2fd; 
+                color: #1565c0; 
+                border: 1px solid #bbdefb;
+                border-radius: 5px;
+                padding: 8px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background-color: #bbdefb; }
+        """)
+        fc_layout.addWidget(btn_f)
         
         f_list = QListWidget(); f_list.setStyleSheet("border:none; background:transparent;")
         fc_layout.addWidget(f_list)
 
         def do_flight_search():
             f_list.clear(); f_list.addItem("Searching...")
-            w = FlightWorker(self.api, f_origin.text(), plan_data.get("destination"), plan_data.get("start_date"))
+            # Use the origin from the variable directly
+            w = FlightWorker(self.api, origin_city, plan_data.get("destination"), plan_data.get("start_date"))
             w.finished_signal.connect(lambda res: update_flights(res, f_list))
             self.start_worker(w)
 
         def update_flights(res, list_w):
             list_w.clear()
+            if not res:
+                list_w.addItem("No flights found.")
+                return
             for f in res:
                 list_w.addItem(f"{f['carrier']} | {f['price']} | {f['stops']}")
 
@@ -323,7 +339,6 @@ class TripViewerView(QWidget):
             self.chat_history_state.append({"type": "plan", "content": {"title": title, "plan": plan_data}})
             self.save_state_to_server()
 
-    # --- THIS WAS THE MISSING METHOD ---
     def trigger_image_generation(self, destination, interest, ver_id):
         worker = ImageWorker(self.api, destination, interest)
         worker.finished_signal.connect(lambda b64: self.render_image_in_placeholder(b64, ver_id))
@@ -350,7 +365,6 @@ class TripViewerView(QWidget):
             candidates = [
                 os.path.join(base_dir, "assets", "globe_logo.png"),
                 os.path.join(base_dir, "client", "assets", "globe_logo.png"),
-                "C:/My Projects/Smart_Travel_Agent/client/assets/globe_logo.png" 
             ]
             
             for path in candidates:

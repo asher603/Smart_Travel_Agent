@@ -88,6 +88,14 @@ async def generate_trip(req: GenerateTripRequest):
                 
             plan_data = ai_resp.json()
             
+            # --- FIX: Inject Metadata into Plan ---
+            # ה-AI לא תמיד מחזיר את השדות האלה, אז אנחנו מוסיפים אותם ידנית
+            # כדי שה-Client יוכל להשתמש בהם (במיוחד לחיפוש טיסות)
+            plan_data["origin"] = req.origin
+            plan_data["destination"] = req.destination
+            plan_data["start_date"] = req.start_date
+            # --------------------------------------
+            
         except httpx.ConnectError:
             print("❌ AI Service Connection Refused")
             raise HTTPException(status_code=503, detail="AI Service is unreachable")
@@ -107,6 +115,7 @@ async def generate_trip(req: GenerateTripRequest):
                     "trip_id": new_trip_id,
                     "username": req.username, 
                     "destination": req.destination,
+                    "origin": req.origin,  # <-- Saving origin explicitly to DB for history
                     "initial_request": req.dict(),
                     "generated_plan": plan_data
                 }
