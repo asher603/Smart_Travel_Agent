@@ -1,4 +1,5 @@
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 from ai_service.schemas.api_models import TripRequest, TripResponse, ChatRequest, RefineRequest
 from ai_service.core.security import security_guard
 from ai_service.ml_models.analyzer import analyze_user_vibe
@@ -8,6 +9,10 @@ from ai_service.agents.travel_agent import TravelAgent
 # Initialize Agent
 agent = TravelAgent()
 router = APIRouter()
+
+class ImageRequest(BaseModel):
+    destination: str
+    interest: str
 
 @router.post("/generate_trip")
 async def generate_trip(request: TripRequest):
@@ -44,6 +49,13 @@ async def chat(request: ChatRequest):
     except Exception as e:
         print(f"❌ Chat Error: {e}")
         return {"answer": "Sorry, I'm having trouble thinking right now."}
+
+@router.post("/generate_image")
+async def generate_image_api(request: ImageRequest):
+    print(f"🎨 API Request: Image for {request.destination}")
+    # We map 'interest' to 'vibe' for the generator
+    image_b64 = generate_trip_image(request.destination, request.interest)
+    return {"image_base64": image_b64}
 
 @router.post("/refine_trip")
 async def refine_trip(request: RefineRequest):

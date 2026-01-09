@@ -1,5 +1,6 @@
 import requests
 from PySide6.QtCore import QThread, Signal
+from datetime import date
 
 # --- WORKERS ---
 
@@ -9,8 +10,10 @@ class ImageWorker(QThread):
         super().__init__()
         self.api = api; self.destination = destination; self.interest = interest
     def run(self):
-        resp = self.api.post("/ai/generate_image", {"destination": self.destination, "interest": self.interest})
-        self.finished_signal.emit(resp.get("image_base64") if resp else None)
+        try:
+            response = self.api.post("/ai/generate_image", {"destination": self.destination, "interest": self.interest})
+            self.finished_signal.emit(response.get("image_base64") if response else None)
+        except: self.finished_signal.emit(None)
 
 class ChatWorker(QThread):
     finished_signal = Signal(str)
@@ -18,8 +21,10 @@ class ChatWorker(QThread):
         super().__init__()
         self.api = api; self.question = question; self.context = context
     def run(self):
-        resp = self.api.post("/ai/ask", {"question": self.question, "context": self.context})
-        self.finished_signal.emit(resp.get("answer", "No response") if resp else "Error")
+        try:
+            response = self.api.post("/ai/ask", {"question": self.question, "context": self.context})
+            self.finished_signal.emit(response.get("answer", "No response"))
+        except: self.finished_signal.emit("Error connecting")
 
 class StateSaverWorker(QThread):
     def __init__(self, api, trip_id, history):
@@ -62,15 +67,12 @@ class RefineWorker(QThread):
     def run(self):
         payload = {
             "trip_id": self.trip_id,
-            "current_plan": self.plan,
-            "instructions": self.instr
+            "instructions": self.instr,
+            "current_plan": self.plan
         }
         res = self.api.post("/trips/refine", payload)
 
-        if res is None:
-            self.finished.emit({})
-        else:
-            self.finished.emit(res)
+        self.finished.emit(res if res else {})
 
 class FlightWorker(QThread):
     finished_signal = Signal(list)
@@ -86,7 +88,7 @@ class FlightWorker(QThread):
         # 1. Fallback & Validation
         search_from = self.origin if self.origin else "Tel Aviv"
         search_to = self.dest if self.dest else "London"
-        search_date = self.date if self.date else "2025-06-01"
+        search_date = self.date if self.date else date.today().isoformat()
 
         # Prevent Origin == Destination error
         if search_from.strip().lower() == search_to.strip().lower():

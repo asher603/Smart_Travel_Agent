@@ -419,7 +419,6 @@ class TripViewerView(QWidget):
             self.start_worker(w)
         else:
             self.add_bubble("Refining Plan...", False)
-            # FIX: Sending self.trip_id to the worker!
             w = RefineWorker(self.api, self.trip_id, self.current_plan_data, msg)
             w.finished.connect(lambda res: self.on_refine_done(res, msg))
             self.start_worker(w)
