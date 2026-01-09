@@ -19,7 +19,7 @@ def analyze_user_vibe(interest_text: str) -> str:
             "Food & Culinary", "Nightlife & Party", "History & Art", "Shopping"
         ]
 
-        response = client.post(
+        response = client(
             json={
                 "inputs": interest_text,
                 "parameters": {"candidate_labels": candidate_labels, "multi_label": False}

@@ -1,5 +1,5 @@
 import httpx
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from pydantic import BaseModel
 from server.core.config import settings
 

@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     AMADEUS_SECRET: str
     
     # Service URLs
-    DATA_SERVICE_URL: str = "http://localhost:8002"
-    AI_SERVICE_URL: str = "http://localhost:8001"
+    AI_SERVICE_URL: str = "http://localhost:8002"
+    DATA_SERVICE_URL: str = "http://localhost:8003"
 
     class Config:
         env_file = ".env"

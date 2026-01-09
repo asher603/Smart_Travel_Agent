@@ -1,7 +1,7 @@
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.messages import HumanMessage
-from duckduckgo_search import DDGS
+from ddgs import DDGS
 from ai_service.core.llm_factory import llm_manager
 from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest
 

@@ -28,8 +28,8 @@ services:
       - "8001:8001"
     environment:
       # Internal Service URLs
-      - DATA_SERVICE_URL=http://data_service:8003
       - AI_SERVICE_URL=http://ai_service:8002
+      - DATA_SERVICE_URL=http://data_service:8003
       # API Keys from .env
       - AMADEUS_API_KEY=${AMADEUS_API_KEY}
       - AMADEUS_SECRET=${AMADEUS_SECRET}
@@ -53,7 +53,6 @@ services:
       - OLLAMA_BASE_URL=http://ollama:11434
     depends_on:
       - ollama
-    # --- הוספת DNS לפתרון בעיות חיבור ---
     dns:
       - 8.8.8.8
       - 8.8.4.4
@@ -66,11 +65,9 @@ services:
     build: ./data_service
     ports:
       - "8003:8003"
-    
-    # -------------------------------------------------------
+
     # CRITICAL CONFIG: Google DNS for MongoDB Atlas Resolution
     # Required for resolving SRV records inside Docker
-    # -------------------------------------------------------
     dns:
       - 8.8.8.8
       - 8.8.4.4
@@ -92,7 +89,8 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
+    entrypoint: [ "/bin/bash", "-c", "/bin/ollama serve & sleep 5 && ollama pull llama3.1 && wait" ]
 
-# ווליום לשמירת המודלים של Ollama (כדי שלא תצטרך להוריד מחדש בכל ריצה)
+# Ollama volume (saves Ollama models between restarts, so they won't have to redownload every run)
 volumes:
   ollama_data:

@@ -1,8 +1,6 @@
 import httpx
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
-
-# --- FIX: Import directly from 'core' because we are inside the /app directory in Docker ---
 from core.config import settings 
 
 app = FastAPI(title=settings.APP_NAME)
@@ -64,5 +62,5 @@ async def catch_all(path_name: str, request: Request):
     Forwards all incoming requests to the main Server Service.
     Example: /trips/generate -> http://server:8001/trips/generate
     """
-    # Fix: Use settings.SERVER_URL (which is http://server:8001)
+    # Using settings.SERVER_URL (which is http://server:8001)
     return await proxy_request(settings.SERVER_URL, f"/{path_name}", request)

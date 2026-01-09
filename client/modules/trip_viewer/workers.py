@@ -49,10 +49,9 @@ class BudgetWorker(QThread):
         resp = self.api.post("/trips/analyze_budget", {"budget": self.budget})
         self.finished_signal.emit(resp.get("breakdown", {}) if resp else {})
 
-# --- FIX: RefineWorker Updated ---
 class RefineWorker(QThread):
     finished = Signal(dict)
-    # Added trip_id to constructor
+
     def __init__(self, api, trip_id, plan, instr):
         super().__init__()
         self.api = api
@@ -61,13 +60,17 @@ class RefineWorker(QThread):
         self.instr = instr
 
     def run(self):
-        # FIX: Structure matches server expectation (trip_id + instructions plural)
         payload = {
             "trip_id": self.trip_id,
             "current_plan": self.plan,
             "instructions": self.instr
         }
-        self.finished.emit(self.api.post("/trips/refine", payload))
+        res = self.api.post("/trips/refine", payload)
+
+        if res is None:
+            self.finished.emit({})
+        else:
+            self.finished.emit(res)
 
 class FlightWorker(QThread):
     finished_signal = Signal(list)
@@ -81,9 +84,9 @@ class FlightWorker(QThread):
 
     def run(self):
         # 1. Fallback & Validation
+        search_from = self.origin if self.origin else "Tel Aviv"
         search_to = self.dest if self.dest else "London"
         search_date = self.date if self.date else "2025-06-01"
-        search_from = self.origin if self.origin else "Tel Aviv"
 
         # Prevent Origin == Destination error
         if search_from.strip().lower() == search_to.strip().lower():

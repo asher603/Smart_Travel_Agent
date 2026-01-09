@@ -2,7 +2,7 @@ langchain
 langchain-community
 langchain-groq
 langchain-google-genai
-duckduckgo-search
+ddgs
 python-dotenv
 fastapi
 uvicorn

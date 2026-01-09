@@ -407,7 +407,6 @@ class TripViewerView(QWidget):
         elif lbl:
              lbl.setText("N/A")
 
-    # --- FIX: Pass trip_id to RefineWorker ---
     def on_send(self):
         msg = self.chat_input.text(); self.chat_input.clear()
         if not msg: return

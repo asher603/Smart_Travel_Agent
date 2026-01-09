@@ -6,8 +6,7 @@ class Settings(BaseSettings):
     Application configuration settings.
     Loads values from environment variables defined in .env or Docker environment.
     """
-    
-    # --- הוספתי את השורה הזו שחסרה ---
+
     APP_NAME: str = "Smart Travel Data Service"
 
     # Connection string for MongoDB (Cloud Atlas)
@@ -15,11 +14,10 @@ class Settings(BaseSettings):
     MONGODB_URI: str = os.getenv("MONGODB_URI", "mongodb://localhost:27017")
     
     # The name of the database to use
-    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "travel_db")
+    DATABASE_NAME: str = os.getenv("DATABASE_NAME", "smart_travel_agent_db")
 
     class Config:
         case_sensitive = True
-        # אופציונלי: טוען משתנים מקובץ .env אם מריצים לוקאלית (לא דרך דוקר)
         env_file = ".env"
 
 settings = Settings()
