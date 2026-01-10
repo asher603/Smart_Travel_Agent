@@ -1,0 +1,6 @@
+Each app service runs on its own port to ensure seperation and avoid stiffness
+
+Gateway Service:    Port 8000
+Server:             Port 8001
+AI Service:         Port 8002
+Data Service:       Port 8003

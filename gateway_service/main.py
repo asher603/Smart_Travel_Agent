@@ -23,7 +23,7 @@ async def proxy_request(service_url: str, path: str, request: Request):
             url=url,
             headers=request.headers.raw,
             content=body,
-            timeout=60.0 
+            timeout=120.0 
         )
         
         # Return the response from the internal service back to the client

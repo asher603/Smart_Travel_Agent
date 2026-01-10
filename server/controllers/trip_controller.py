@@ -5,7 +5,7 @@ import random
 from datetime import datetime
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List, Dict, Any
 from server.core.config import settings
 from server.services.flight_service import flight_service
 
@@ -23,7 +23,7 @@ class GenerateTripRequest(BaseModel):
 class RefineTripRequest(BaseModel):
     trip_id: str
     instructions: str
-    current_plan: dict 
+    current_plan: Dict[str, Any]
 
 class HistoryRequest(BaseModel):
     username: str
@@ -32,7 +32,6 @@ class TripIdRequest(BaseModel):
     trip_id: str
 
 class FlightRequest(BaseModel):
-    # Pydantic V2 Fix: Using Field(alias=...) instead of Config.fields
     origin: str = Field(default="Unknown", alias="from")
     to: str
     date: str
@@ -100,6 +99,9 @@ async def generate_trip(req: GenerateTripRequest):
         except httpx.ReadTimeout:
             print("❌ AI Service Timed Out")
             raise HTTPException(status_code=504, detail="AI Generation Timed Out")
+        except Exception as e:
+            print(f"⚠️ AI Generation Failed: {e}. Returning Mock Data.")
+            raise HTTPException(status_code=500, detail=f"AI Generation Failed: {str(e)}")
 
         # B. Save to Data Service
         new_trip_id = str(uuid.uuid4())
@@ -138,8 +140,8 @@ async def refine_trip(req: RefineTripRequest):
             # 1. Call AI Service
             ai_resp = await client.post(
                 f"{settings.AI_SERVICE_URL}/refine_trip",
-                json=req.dict(),
-                timeout=60.0
+                json=req.model_dump(),
+                timeout=120.0
             )
             
             # 2. Check for AI Service Errors
@@ -174,7 +176,7 @@ async def refine_trip(req: RefineTripRequest):
 async def get_history(req: HistoryRequest):
     async with httpx.AsyncClient() as client:
         try:
-            resp = await client.get(f"{settings.DATA_SERVICE_URL}/users/{req.username}/trips")
+            resp = await client.get(f"{settings.DATA_SERVICE_URL}/user/{req.username}/summary")
             if resp.status_code == 200:
                 return {"trips": resp.json()}
             return {"trips": []}
