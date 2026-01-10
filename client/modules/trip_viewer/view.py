@@ -1,5 +1,6 @@
 import base64
 import os
+import re
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QLineEdit, QComboBox, QScrollArea, QFrame, QSplitter, 
@@ -7,8 +8,6 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import Qt, Signal, QByteArray
 from PySide6.QtGui import QPixmap
-
-# --- IMPORTS ---
 from .workers import (
     ImageWorker, ChatWorker, StateSaverWorker, 
     WeatherWorker, FlightWorker, BudgetWorker, RefineWorker
@@ -26,6 +25,11 @@ try:
     from utils.pdf_generator import generate_trip_pdf
 except ImportError:
     generate_trip_pdf = None
+
+try:
+    from client.components import BudgetPieChart
+except ImportError:
+    BudgetPieChart = None
 
 # --- HELPER CLASSES ---
 class ClickableImage(QLabel):
@@ -254,10 +258,7 @@ class TripViewerView(QWidget):
         fc_layout = QVBoxLayout(flight_card)
         fc_layout.addWidget(QLabel("✈️ Flights", styleSheet="font-weight:bold; font-size:14px; color:#333;"))
         
-        # Get origin directly from plan, default to Tel Aviv if missing
         origin_city = plan_data.get("origin", "Tel Aviv")
-
-        # Removed the QLineEdit, keeping only the button
         btn_f = QPushButton(f"🔎 Check Flights from {origin_city}")
         btn_f.setCursor(Qt.PointingHandCursor)
         btn_f.setStyleSheet("""
@@ -300,14 +301,19 @@ class TripViewerView(QWidget):
         bc_layout = QVBoxLayout(budget_card)
         bc_layout.addWidget(QLabel("💰 Budget Breakdown", styleSheet="font-weight:bold; font-size:14px; color:#333;"))
         
-        self.lbl_budget = QLabel("Loading...")
-        self.lbl_budget.setWordWrap(True)
-        self.lbl_budget.setStyleSheet("font-size:14px; color:#444;")
-        bc_layout.addWidget(self.lbl_budget)
-        bc_layout.addStretch()
+        # Instantiate Chart if available, else fallback
+        current_chart = None
+        if BudgetPieChart:
+            current_chart = BudgetPieChart()
+            bc_layout.addWidget(current_chart)
+        else:
+            lbl_fallback = QLabel("Chart Component Missing")
+            lbl_fallback.setAlignment(Qt.AlignCenter)
+            bc_layout.addWidget(lbl_fallback)
         
         bw = BudgetWorker(self.api, plan_data.get("budget", "2000"))
-        bw.finished_signal.connect(lambda res: self.lbl_budget.setText("\n".join([f"• {k}: {v}" for k,v in res.items()])))
+        # Pass the specific chart instance to the updater to avoid overwriting issues
+        bw.finished_signal.connect(lambda res, c=current_chart: self.update_budget_chart(res, c))
         self.start_worker(bw)
 
         row2.addWidget(budget_card, 1)
@@ -338,6 +344,27 @@ class TripViewerView(QWidget):
         if save and not self.is_loading_mode:
             self.chat_history_state.append({"type": "plan", "content": {"title": title, "plan": plan_data}})
             self.save_state_to_server()
+
+    def update_budget_chart(self, breakdown_data, chart_widget):
+        """
+        Parses the server response (formatted strings) into integers for the chart.
+        Input: {"Flights": "$700 (35%)", ...}
+        Output: Updates chart with {"Flights": 700, ...}
+        """
+        if not chart_widget or not breakdown_data:
+            return
+
+        clean_data = {}
+        for category, text in breakdown_data.items():
+            # Regex to extract the first number found (e.g. 700 from "$700 (35%)")
+            match = re.search(r'(\d+)', str(text).replace(",", ""))
+            if match:
+                clean_data[category] = int(match.group(1))
+            else:
+                # Fallback: ignore or set to 0
+                pass
+        
+        chart_widget.update_data(clean_data)
 
     def trigger_image_generation(self, destination, interest, ver_id):
         worker = ImageWorker(self.api, destination, interest)
