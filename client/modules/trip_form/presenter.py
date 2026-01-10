@@ -12,7 +12,6 @@ class GenerateTripWorker(QThread):
 
     def run(self):
         try:
-            # This will now wait 60s for the Real AI
             result = self.service.generate_trip(self.payload)
             
             if result and "trip" in result:
@@ -36,6 +35,16 @@ class TripFormPresenter(QObject):
         self.view.generate_requested.connect(self.handle_generate)
         self.view.back_requested.connect(self.go_back)
         self.worker = None
+
+        # --- Subscribe to login event ---
+        self.bus.subscribe("login_success", self.on_login)
+
+    def on_login(self, data):
+        """Updates the model with the logged-in username"""
+        username = data.get("username")
+        if username:
+            print(f"📝 TripForm received user: {username}")
+            self.model.username = username
 
     def handle_generate(self, data):
         # 1. Lock UI
