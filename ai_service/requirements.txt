@@ -11,3 +11,8 @@ pydantic
 pydantic-settings
 huggingface_hub
 Pillow
+fastmcp
+langchain-mcp-adapters
+sse-starlette
+httpx
+mcp

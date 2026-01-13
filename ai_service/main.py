@@ -1,30 +1,20 @@
-import uvicorn
 from fastapi import FastAPI
-from ai_service.core.events import lifespan
-from ai_service.core.config import settings
-from ai_service.mcp.router import router as mcp_router
+from ai_service.api.endpoints import router as api_router
 
-# 1. Initialize App with Lifespan (Startup/Shutdown logic)
-app = FastAPI(
-    title=settings.APP_NAME,
-    version=settings.VERSION,
-    lifespan=lifespan 
-)
+app = FastAPI(title="AI Service")
 
-# 2. Register Routes
-app.include_router(mcp_router)
-
+# בדיקת בריאות (חשוב)
 @app.get("/health")
-def health_check():
-    return {
-        "status": "active", 
-        "mode": "debug" if settings.DEBUG_MODE else "production"
-    }
+async def health_check():
+    return {"status": "active", "service": "ai_service"}
 
-if __name__ == "__main__":
-    uvicorn.run(
-        "main:app", 
-        host="0.0.0.0", 
-        port=8001, 
-        reload=settings.DEBUG_MODE
-    )
+# --- מלכודת דבש: מאזינים בכל הנתיבים האפשריים ---
+
+# 1. ניסיון בסיסי (למשל: http://ai_service:8002/generate)
+app.include_router(api_router)
+
+# 2. ניסיון עם קידומת api (למשל: http://ai_service:8002/api/generate)
+app.include_router(api_router, prefix="/api")
+
+# 3. ניסיון עם קידומת trips (למשל: http://ai_service:8002/trips/generate)
+app.include_router(api_router, prefix="/trips")

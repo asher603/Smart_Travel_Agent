@@ -10,6 +10,7 @@ services:
     environment:
       - SERVER_URL=http://server:8001
       - AI_SERVICE_URL=http://ai_service:8002
+      # שיח פנימי בדוקר - פונים לפורט הפנימי (8003)
       - DATA_SERVICE_URL=http://data_service:8003
     depends_on:
       - server
@@ -56,22 +57,39 @@ services:
       - 8.8.4.4
 
   # -----------------------------
+  # MCP SERVER (Tools Service)
+  # Port: 8003 (Host) -> 8000 (Container)
+  # -----------------------------
+  mcp-server:
+    build: ./ai_service
+    # התיקון הקריטי: הוספנו --transport sse
+    command: fastmcp run ai_service/mcp/server.py:mcp --transport sse --host 0.0.0.0 --port 8000
+    volumes:
+      - ./ai_service:/app/ai_service
+      - ./server:/app/server
+    environment:
+      - PYTHONPATH=/app
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - HF_TOKEN=${HF_TOKEN}
+      - HUGGINGFACE_API_KEY=${HF_TOKEN}
+      - OLLAMA_BASE_URL=http://ollama:11434
+    ports:
+      - "8003:8000"
+
+  # -----------------------------
   # 4. DATA SERVICE (Event Store + DB)
-  # Port: 8003
+  # Port: 8004 (Host) -> 8003 (Container)
   # -----------------------------
   data_service:
     build: ./data_service
     ports:
-      - "8003:8003"
-
-    # CRITICAL CONFIG: Google DNS for MongoDB Atlas Resolution
-    # Required for resolving SRV records inside Docker
+      # הזזנו ל-8004 כדי לפנות את 8003 ל-MCP
+      - "8004:8003"
     dns:
       - 8.8.8.8
       - 8.8.4.4
-
     environment:
-      # Connection string injected from .env
       - MONGODB_URI=${MONGODB_URI}
       - DATABASE_NAME=smart_travel_agent_db
 
@@ -89,6 +107,5 @@ services:
     restart: unless-stopped
     entrypoint: [ "/bin/bash", "-c", "/bin/ollama serve & sleep 5 && ollama pull llama3.1 && wait" ]
 
-# Ollama volume (saves Ollama models between restarts, so they won't have to redownload every run)
 volumes:
   ollama_data:
