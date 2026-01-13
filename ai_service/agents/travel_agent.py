@@ -28,17 +28,12 @@ class TravelAgent:
         """
         lc_tools = []
         try:
-            # שימוש בלקוח הרשמי של MCP לחיבור SSE
             async with sse_client(self.mcp_url) as streams:
                 async with ClientSession(streams[0], streams[1]) as session:
                     await session.initialize()
-                    
-                    # קבלת רשימת הכלים
                     result = await session.list_tools()
                     
-                    # המרה פשוטה לכלים של LangChain
                     for tool in result.tools:
-                        # יצירת כלי עוטף שקורא ל-MCP
                         async def call_mcp_tool(t_name=tool.name, **kwargs):
                             return await session.call_tool(t_name, arguments=kwargs)
                         
@@ -48,28 +43,14 @@ class TravelAgent:
                             name=tool.name,
                             description=tool.description or "MCP Tool"
                         ))
-                        
-                    logger.info(f"✅ Successfully loaded {len(lc_tools)} MCP tools: {[t.name for t in result.tools]}")
+                    logger.info(f"✅ Successfully loaded {len(lc_tools)} MCP tools")
                     return lc_tools
-
         except Exception as e:
-            # במקרה של שגיאה - אנחנו מדפיסים אותה אבל מחזירים רשימה ריקה
-            # זה קריטי כדי שהשירות לא יקרוס!
             logger.warning(f"⚠️ Could not connect to MCP Server: {e}")
             return []
 
     async def plan_trip(self, req: TripRequest, analyzed_vibe: str) -> Dict[str, Any]:
-        # 1. ניסיון לטעון כלים (עם הגנה מקריסה)
-        # שים לב: בגלל המבנה של MCP, החיבור צריך להישאר פתוח בזמן הריצה.
-        # לצורך הפשטות כרגע, נריץ ללא כלים אם החיבור מורכב, או נשתמש ב-LLM בלבד.
-        
-        # הערה: חיבור MCP מלא דורש ניהול Context מורכב.
-        # כדי שהמערכת שלך תעבוד *עכשיו*, נשתמש בידע של ה-LLM בלבד בשלב הראשון.
-        # זה יבטיח שהטיול ייווצר בהצלחה.
-        
-        llm = self.manager.get_llm()
-        
-        # 2. בניית הפרומפט
+        # 1. הכנת הפרומפט
         parser = JsonOutputParser()
         prompt = ChatPromptTemplate.from_messages([
             ("system", "You are an expert travel agent. Create a detailed itinerary."),
@@ -95,13 +76,23 @@ class TravelAgent:
             format_instructions=parser.get_format_instructions()
         )
         
-        # 3. הפעלה
-        response = await llm.invoke(messages)
-        content = response.content if hasattr(response, 'content') else str(response)
-        
+        # 2. הפעלה - התיקון הגדול כאן!
+        # במקום: await llm.invoke (שגורם לקריסה כי invoke הוא סינכרוני)
+        # אנחנו משתמשים במנהל שבנית שיודע לעבוד אסינכרונית וגם יש לו גיבויים
         try:
+            response = await self.manager.invoke(messages)
+            content = response.content if hasattr(response, 'content') else str(response)
+            
             result = parser.parse(content)
             result["analyzed_vibe"] = analyzed_vibe
             return result
-        except Exception:
-            return {"error": "Failed to parse itinerary", "raw": content}
+            
+        except Exception as e:
+            logger.error(f"❌ AI Execution Failed: {e}")
+            # החזרת תשובה בסיסית במקרה של כישלון מוחלט כדי שהקליינט לא יקרוס
+            return {
+                "summary": "AI generation failed, please try again.",
+                "itinerary": [],
+                "budget_breakdown": {},
+                "analyzed_vibe": "Error"
+            }

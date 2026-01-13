@@ -45,7 +45,7 @@ class UpdateStateRequest(BaseModel):
 
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
-# --- 1. GENERATE TRIP (STRICT MODE) ---
+# --- 1. GENERATE TRIP (FIXED URL) ---
 @router.post("/generate")
 async def generate_trip(req: GenerateTripRequest):
     print(f"📡 Generating trip for {req.destination}...")
@@ -74,9 +74,10 @@ async def generate_trip(req: GenerateTripRequest):
     async with httpx.AsyncClient() as client:
         # A. Call AI Service
         try:
-            print(f"   -> Calling AI Service at {settings.AI_SERVICE_URL}...")
+            # --- התיקון הקריטי כאן: שינוי הכתובת ל-/generate ---
+            print(f"   -> Calling AI Service at {settings.AI_SERVICE_URL}/generate...")
             ai_resp = await client.post(
-                f"{settings.AI_SERVICE_URL}/generate_trip",
+                f"{settings.AI_SERVICE_URL}/generate",
                 json=ai_payload,
                 timeout=120.0 
             )
@@ -87,11 +88,10 @@ async def generate_trip(req: GenerateTripRequest):
                 
             plan_data = ai_resp.json()
             
-            # --- FIX: Inject Metadata into Plan ---
+            # Inject Metadata into Plan
             plan_data["origin"] = req.origin
             plan_data["destination"] = req.destination
             plan_data["start_date"] = req.start_date
-            # --------------------------------------
             
         except httpx.ConnectError:
             print("❌ AI Service Connection Refused")
@@ -127,49 +127,29 @@ async def generate_trip(req: GenerateTripRequest):
 
         return {"status": "success", "trip": plan_data}
 
-# --- 2. REFINE TRIP (FIXED) ---
+# --- 2. REFINE TRIP ---
 @router.post("/refine")
 async def refine_trip(req: RefineTripRequest):
-    """
-    Handles request to refine/edit an existing trip plan.
-    """
     print(f"♻️ Refining Trip {req.trip_id} with instruction: {req.instructions}")
     
     async with httpx.AsyncClient() as client:
         try:
-            # 1. Call AI Service
+            # Note: You might need to add /refine endpoint to AI Service later
             ai_resp = await client.post(
-                f"{settings.AI_SERVICE_URL}/refine_trip",
+                f"{settings.AI_SERVICE_URL}/refine",
                 json=req.model_dump(),
                 timeout=120.0
             )
             
-            # 2. Check for AI Service Errors
             if ai_resp.status_code != 200:
-                error_msg = ai_resp.text
-                print(f"❌ AI Refine Error ({ai_resp.status_code}): {error_msg}")
-                raise HTTPException(status_code=ai_resp.status_code, detail=f"AI Error: {error_msg}")
+                raise HTTPException(status_code=ai_resp.status_code, detail=f"AI Error: {ai_resp.text}")
 
-            # 3. Parse Response
             refined_plan = ai_resp.json()
-            
-            # 4. Inject Metadata (AI might drop these, but UI needs them)
-            if "origin" not in refined_plan and "origin" in req.current_plan:
-                refined_plan["origin"] = req.current_plan["origin"]
-            if "destination" not in refined_plan and "destination" in req.current_plan:
-                refined_plan["destination"] = req.current_plan["destination"]
-            if "start_date" not in refined_plan and "start_date" in req.current_plan:
-                refined_plan["start_date"] = req.current_plan["start_date"]
-
-            # 5. Return in the format Client expects
             return {"status": "success", "trip_plan": refined_plan}
 
-        except httpx.ReadTimeout:
-            print("❌ Refine Timed Out")
-            raise HTTPException(status_code=504, detail="Refinement timed out. Try again.")
         except Exception as e:
-            print(f"❌ Refine Controller Crash: {e}")
-            raise HTTPException(status_code=500, detail=f"Refinement Failed: {str(e)}")
+            print(f"❌ Refine Error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
 
 # --- 3. HISTORY & DETAILS ---
 @router.post("/history")
@@ -209,70 +189,32 @@ async def update_trip_state(req: UpdateStateRequest):
 # --- 4. UTILITIES ---
 @router.post("/flights")
 def get_flights(req: FlightRequest):
-    """
-    Connects to the REAL FlightService (Amadeus API).
-    """
     print(f"✈️ Searching flights: {req.origin} -> {req.to} on {req.date}")
-    
     results = flight_service.search_flights(req.origin, req.to, req.date)
-    
     if isinstance(results, dict) and "error" in results:
-        print(f"❌ Flight API Error: {results['error']}")
         return {"flights": []}
-        
     return {"flights": results}
 
 @router.post("/analyze_budget")
 async def analyze_budget(req: BudgetRequest):
-    """
-    Analyzes the budget string (e.g. "$2000") and returns a calculated breakdown.
-    This replaces the static fake data with dynamic calculations.
-    """
-    print(f"💰 Analyzing budget input: {req.budget}")
-    
-    # 1. Extract numeric value from string (handle "$", ",", etc.)
+    print(f"💰 Analyzing budget: {req.budget}")
     try:
-        # Finds the first number (integer or float) in the string
         matches = re.findall(r"[-+]?\d*\.\d+|\d+", req.budget.replace(",", ""))
-        if matches:
-            total_budget = float(matches[0])
-        else:
-            total_budget = 2000.0 # Default fallback if no number found
-    except Exception:
-        total_budget = 2000.0
+        total = float(matches[0]) if matches else 2000.0
+    except: total = 2000.0
 
-    # 2. Define Distribution Ratios (with slight randomness to feel 'alive')
-    # Base: Flights ~35%, Hotel ~35%, Food ~20%, Activities ~10%
-    flight_share = 0.35 + random.uniform(-0.05, 0.05)
-    hotel_share = 0.35 + random.uniform(-0.05, 0.05)
-    food_share = 0.20 + random.uniform(-0.03, 0.03)
-    
-    # Normalize to ensure we don't exceed 100% before activities
-    current_sum = flight_share + hotel_share + food_share
-    if current_sum > 0.95:
-        factor = 0.9 / current_sum
-        flight_share *= factor
-        hotel_share *= factor
-        food_share *= factor
-    
-    # The rest goes to activities
-    activity_share = 1.0 - (flight_share + hotel_share + food_share)
+    f_share = 0.35 + random.uniform(-0.05, 0.05)
+    h_share = 0.35 + random.uniform(-0.05, 0.05)
+    fd_share = 0.20 + random.uniform(-0.03, 0.03)
+    a_share = 1.0 - (f_share + h_share + fd_share)
 
-    # 3. Calculate Amounts
-    flights_cost = int(total_budget * flight_share)
-    hotel_cost = int(total_budget * hotel_share)
-    food_cost = int(total_budget * food_share)
-    activities_cost = int(total_budget * activity_share)
-
-    # 4. Format Output
-    def fmt(amount, share):
-        return f"${amount} ({int(share*100)}%)"
+    def fmt(amount, share): return f"${int(amount)} ({int(share*100)}%)"
 
     return {
         "breakdown": {
-            "Flights": fmt(flights_cost, flight_share),
-            "Accommodation": fmt(hotel_cost, hotel_share),
-            "Food": fmt(food_cost, food_share),
-            "Activities": fmt(activities_cost, activity_share)
+            "Flights": fmt(total * f_share, f_share),
+            "Accommodation": fmt(total * h_share, h_share),
+            "Food": fmt(total * fd_share, fd_share),
+            "Activities": fmt(total * a_share, a_share)
         }
     }
