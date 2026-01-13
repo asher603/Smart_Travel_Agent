@@ -1,6 +1,7 @@
 Debugging Instructions:
 
-Open 2 terminals, with your virtual environment (venv) active.
+Open 2 terminals, with your virtual environment (venv) active:
+    .\venv\Scripts\activate
 
 Terminal 1 - Docker Engine:
     Activation (Regular Option):

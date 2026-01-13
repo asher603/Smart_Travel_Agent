@@ -27,9 +27,10 @@ except ImportError:
     generate_trip_pdf = None
 
 try:
-    from client.components import BudgetPieChart
-except ImportError:
+    from components import BudgetPieChart
+except ImportError as e:
     BudgetPieChart = None
+    print(f"❌ Budget Pie Chart not found: {e}")
 
 # --- HELPER CLASSES ---
 class ClickableImage(QLabel):
