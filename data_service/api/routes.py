@@ -1,4 +1,6 @@
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from typing import List, Any, Dict
 from data_service.events.store import EventStore
 from data_service.events.models import TripCreated, PlanGenerated, ChatAdded
 from data_service.aggregates.trip_state import TripAggregate
@@ -6,6 +8,10 @@ import uuid
 
 router = APIRouter()
 store = EventStore()
+
+# --- מודל חדש לעדכון המצב ---
+class StateUpdate(BaseModel):
+    chat_history: List[Dict[str, Any]]
 
 # --- WRITE (Commands) ---
 
@@ -30,35 +36,25 @@ def add_plan(payload: dict):
     store.append(event)
     return {"status": "Plan saved"}
 
-@router.post("/events/add_chat")
-def add_chat(payload: dict):
-    event = ChatAdded(
-        trip_id=payload["trip_id"],
-        message=payload["message"],
-        sender=payload["sender"]
-    )
-    store.append(event)
-    return {"status": "Message saved"}
-
 # --- READ (Queries) ---
 
 @router.get("/trips/{trip_id}")
 def get_trip_state(trip_id: str):
-    # 1. Fetch all raw events
-    events = store.get_events(trip_id)
-    if not events:
+    # כאן אנחנו משנים גישה: במקום לנגן אירועים (Event Sourcing)
+    # אנחנו קוראים ישירות מה-Snapshot, כי שם הצ'אט נשמר כרגע.
+    
+    trip = store.snapshots.find_one({"trip_id": trip_id})
+    if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
     
-    # 2. Replay them to build state
-    aggregate = TripAggregate()
-    aggregate.apply_events(events)
-    
-    return aggregate.to_dict()
+    # המרת ה-_id של מונגו למחרוזת
+    if "_id" in trip:
+        trip["_id"] = str(trip["_id"])
+        
+    return trip
 
 @router.get("/user/{username}/summary")
 def get_user_summary(username: str):
-    # Query the 'Snapshot' (Projection) collection for speed
-    # This avoids replaying 1000 events just to show a list
     trips = store.snapshots.find({"username": username})
     
     results = []
@@ -70,3 +66,13 @@ def get_user_summary(username: str):
             "budget": t.get("latest_plan", {}).get("budget", "?")
         })
     return results
+
+# --- התיקון הגדול: Endpoint לעדכון ישיר ---
+@router.put("/trips/{trip_id}/state")
+def update_trip_state(trip_id: str, payload: StateUpdate):
+    """
+    Updates the chat history directly in the snapshot.
+    Called by Server -> Client State Saver.
+    """
+    store.update_chat_history(trip_id, payload.chat_history)
+    return {"status": "updated"}
