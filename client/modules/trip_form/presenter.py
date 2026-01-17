@@ -71,6 +71,7 @@ class TripFormPresenter(QObject):
     def on_success(self, trip_data):
         self.view.show_loading(False)
         print("✅ Trip Generated! Navigating...")
+        self.bus.publish("TRIP_CREATED", None)
         self.bus.publish("NAVIGATE", {"index": 4})
         self.bus.publish("LOAD_TRIP", trip_data)
 

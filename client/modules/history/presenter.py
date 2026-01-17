@@ -12,12 +12,22 @@ class HistoryPresenter(QObject):
         self.view.back_clicked.connect(self.go_back)
         self.view.trip_selected.connect(self.load_trip)
         self.view.trip_deleted.connect(self.delete_trip)
+        
         self.bus.subscribe("login_success", self.on_login)
+        # --- שורה חדשה: הרשמה לאירוע יצירת טיול ---
+        self.bus.subscribe("TRIP_CREATED", self.on_trip_created)
 
     def on_login(self, data):
         self.current_user = data.get("username")
         # Trigger refresh immediately on login
         self.refresh()
+
+    # --- פונקציה חדשה: מטפלת ברענון כשנוצר טיול ---
+    def on_trip_created(self, _):
+        # המקף התחתון (_) מסמן שאנחנו מתעלמים מהמידע שמגיע עם האירוע
+        print("✨ New trip created. Refreshing history list...")
+        self.refresh()
+    # ---------------------------------------------
 
     def refresh(self):
         print(f"🔄 Refreshing History for {self.current_user}")

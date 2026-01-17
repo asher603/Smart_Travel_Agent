@@ -138,13 +138,45 @@ class TripViewerView(QWidget):
         if not self.is_loading_mode: self.save_state_to_server()
         self.back_signal.emit()
 
+    def clear_layout(self, layout):
+        """
+        function to recursively clear a layout of all its widgets and sub-layouts.
+        """
+        if not layout: return
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget:
+                widget.deleteLater()
+            elif item.layout():
+                # If this is an internal Layout (like a row), we enter it and clear it as well
+                self.clear_layout(item.layout())
+
     def reset_ui(self):
-        self.trip_list.clear(); self.chat_history_state = []
-        self.trip_counter = 0; self.trip_widgets_map = {}; self.image_placeholders = {}; self.weather_labels = {}
+        # 1. עצירת תהליכים ברקע (מונע התנגשויות ועדכוני רפאים)
+        for w in self.active_workers:
+            try:
+                w.blockSignals(True)  # חוסם את האותות כדי שלא ינסו לעדכן UI
+                if w.isRunning():
+                    w.quit()
+                    w.wait(50)  # מחכה מעט לסגירה מסודרת
+            except: pass
         self.active_workers.clear()
-        while self.feed_layout.count() > 1:
-            i = self.feed_layout.takeAt(0)
-            if i.widget(): i.widget().deleteLater()
+
+        # 2. איפוס משתנים
+        self.trip_list.clear()
+        self.chat_history_state = []
+        self.trip_counter = 0
+        self.trip_widgets_map = {}
+        self.image_placeholders = {} 
+        self.weather_labels = {}
+        self.current_active_ver_id = None
+
+        # 3. ניקוי עמוק של המסך באמצעות הפונקציה החדשה
+        if self.feed_layout:
+            self.clear_layout(self.feed_layout)
+            # החזרת ה-"Stretch" התחתון שדוחף את הכל למעלה
+            self.feed_layout.addStretch()
 
     def init_new_trip(self, trip_response, username):
         self.is_loading_mode = False

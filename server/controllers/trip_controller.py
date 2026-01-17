@@ -45,7 +45,7 @@ class UpdateStateRequest(BaseModel):
 
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
-# --- 1. GENERATE TRIP (FIXED URL) ---
+# --- 1. GENERATE TRIP ---
 @router.post("/generate")
 async def generate_trip(req: GenerateTripRequest):
     print(f"📡 Generating trip for {req.destination}...")
@@ -74,7 +74,6 @@ async def generate_trip(req: GenerateTripRequest):
     async with httpx.AsyncClient() as client:
         # A. Call AI Service
         try:
-            # --- התיקון הקריטי כאן: שינוי הכתובת ל-/generate ---
             print(f"   -> Calling AI Service at {settings.AI_SERVICE_URL}/generate...")
             ai_resp = await client.post(
                 f"{settings.AI_SERVICE_URL}/generate",
@@ -103,27 +102,39 @@ async def generate_trip(req: GenerateTripRequest):
             print(f"⚠️ AI Generation Failed: {e}. Returning Mock Data.")
             raise HTTPException(status_code=500, detail=f"AI Generation Failed: {str(e)}")
 
-        # B. Save to Data Service
+        # B. Save to Data Service (תיקון לבעיית ההיסטוריה)
         new_trip_id = str(uuid.uuid4())
         plan_data["trip_id"] = new_trip_id
         
         try:
             print(f"   -> Saving Trip {new_trip_id} to Data Service...")
+            
+            save_payload = {
+                "trip_id": new_trip_id,
+                "username": req.username, 
+                "destination": req.destination,
+                "origin": req.origin, 
+                "initial_request": req.dict(),
+                "generated_plan": plan_data
+            }
+            
             save_resp = await client.post(
                 f"{settings.DATA_SERVICE_URL}/events/create_trip",
-                json={
-                    "trip_id": new_trip_id,
-                    "username": req.username, 
-                    "destination": req.destination,
-                    "origin": req.origin, 
-                    "initial_request": req.dict(),
-                    "generated_plan": plan_data
-                }
+                json=save_payload,
+                timeout=10.0 # Timeout קצר, שלא יתקע אם ה-DB איטי
             )
+            
             if save_resp.status_code not in [200, 201]:
-                print(f"⚠️ Data Save Warning: {save_resp.text}")
+                # לוג קריטי: אם זה קורה, הטיול לא נשמר
+                print(f"❌ CRITICAL: Data Service failed to save trip! Status: {save_resp.status_code}, Body: {save_resp.text}")
+            else:
+                print("✅ Trip saved to history successfully.")
+                
         except Exception as e:
-            print(f"⚠️ Data Service Warning: {e}")
+            # כאן אנחנו תופסים שגיאות חיבור ל-Data Service
+            print(f"❌ CRITICAL: Exception saving to Data Service: {e}")
+            # הערה: אנחנו עדיין מחזירים את הטיול למשתמש כדי לא 'להעניש' אותו,
+            # אבל בקונסול תראה עכשיו בבירור למה זה לא נשמר.
 
         return {"status": "success", "trip": plan_data}
 
@@ -159,8 +170,10 @@ async def get_history(req: HistoryRequest):
             resp = await client.get(f"{settings.DATA_SERVICE_URL}/user/{req.username}/summary")
             if resp.status_code == 200:
                 return {"trips": resp.json()}
+            print(f"⚠️ History fetch failed: {resp.status_code}")
             return {"trips": []}
-        except Exception:
+        except Exception as e:
+            print(f"⚠️ History fetch error: {e}")
             return {"trips": []}
 
 @router.post("/details")
