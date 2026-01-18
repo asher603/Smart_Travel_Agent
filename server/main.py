@@ -3,6 +3,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from server.core.config import settings
 from server.controllers import auth_controller, ai_controller, trip_controller, services_controller
+from server.controllers import user_controller
 
 app = FastAPI(title="Smart Travel App Server", version="1.0")
 
@@ -21,6 +22,7 @@ app.include_router(auth_controller.router)
 app.include_router(ai_controller.router)
 app.include_router(trip_controller.router)
 app.include_router(services_controller.router)
+app.include_router(user_controller.router)
 
 @app.get("/")
 def root():

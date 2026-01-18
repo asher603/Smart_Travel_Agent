@@ -11,6 +11,9 @@ from modules.dashboard import DashboardView, DashboardPresenter, DashboardModel
 from modules.history import HistoryView, HistoryPresenter, HistoryModel
 from modules.trip_form import TripFormView, TripFormPresenter, TripFormModel
 from modules.trip_viewer import TripViewerView, TripViewerPresenter, TripViewerModel
+from modules.profile.view import ProfileView
+from modules.profile.presenter import ProfilePresenter
+from modules.profile.model import ProfileModel
 
 # 1. Fix path to allow importing from root
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -67,6 +70,13 @@ def main():
     trip_viewer_view = TripViewerView()
     trip_viewer_presenter = TripViewerPresenter(trip_viewer_view, TripViewerModel(), api_service, event_bus)
     shell.register_module(4, trip_viewer_view)
+
+    # Index 5: Profile
+    profile_view = ProfileView()
+    # חשוב: אנחנו מזריקים את ה-api_service למודל
+    profile_model = ProfileModel(api_service) 
+    profile_presenter = ProfilePresenter(profile_view, profile_model, event_bus)
+    shell.register_module(5, profile_view)
 
     # 6. Global Navigation Logic
     def on_login_success(data):
