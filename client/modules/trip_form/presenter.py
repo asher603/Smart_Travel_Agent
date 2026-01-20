@@ -40,11 +40,18 @@ class TripFormPresenter(QObject):
         self.bus.subscribe("login_success", self.on_login)
 
     def on_login(self, data):
-        """Updates the model with the logged-in username"""
+        """Updates the model with the logged-in username AND email"""
+        # שליפת הנתונים מאירוע ההתחברות
         username = data.get("username")
+        email = data.get("email")  # <--- הוספנו את זה
+        
         if username:
             print(f"📝 TripForm received user: {username}")
             self.model.username = username
+            
+        if email:
+            print(f"📧 TripForm received email: {email}")
+            self.model.email = email # <--- שומרים במודל
 
     def handle_generate(self, data):
         # 1. Lock UI
@@ -59,7 +66,8 @@ class TripFormPresenter(QObject):
             "interests": data.get("interests"),
             "start_date": data.get("start_date"),
             "end_date": data.get("end_date"),
-            "username": self.model.username or "guest"
+            "username": self.model.username or "guest",
+            "email": self.model.email or "user@example.com"
         }
 
         # 3. Start Background Worker

@@ -8,6 +8,7 @@ class TripRequest(BaseModel):
     budget: int
     currency: str = "USD"
     interest: str
+    email: Optional[str] = "user@example.com" # ברירת מחדל למקרה שלא נשלח
 
 class BudgetBreakdown(BaseModel):
     flights: int = Field(alias="Flights")

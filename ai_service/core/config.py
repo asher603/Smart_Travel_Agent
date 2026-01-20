@@ -11,7 +11,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str
     GOOGLE_API_KEY: str
     HF_TOKEN: str
-
+    
+    N8N_WEBHOOK_URL: str = "http://n8n:5678/webhook/trip-action"
+    
     # Model Configs
     PRIMARY_LLM_MODEL: str = "gemini-2.5-flash"
     BACKUP_LLM_MODEL: str = "llama-3.3-70b-versatile"

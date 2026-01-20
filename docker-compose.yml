@@ -107,5 +107,26 @@ services:
     restart: unless-stopped
     entrypoint: [ "/bin/bash", "-c", "/bin/ollama serve & sleep 5 && ollama pull llama3.1 && wait" ]
 
+  # -----------------------------
+  # 6. AUTOMATION (n8n)
+  # Port: 5678
+  # -----------------------------
+  n8n:
+    image: docker.n8n.io/n8nio/n8n
+    container_name: smart_travel_n8n
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_HOST=n8n
+      - N8N_PORT=5678
+      - N8N_PROTOCOL=http
+      - WEBHOOK_URL=http://localhost:5678/
+      # Connect to other services in the mesh
+      - GENERIC_TIMEZONE=Asia/Jerusalem
+    volumes:
+      - n8n_data:/home/node/.n8n
+    restart: unless-stopped  
+
 volumes:
   ollama_data:
+  n8n_data:

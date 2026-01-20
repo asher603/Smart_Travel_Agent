@@ -2,17 +2,19 @@ import logging
 import asyncio
 import re
 import json
+from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
+import httpx
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.tools import BaseTool, StructuredTool
 
-# ייבוא הספריות הרשמיות של MCP
-from mcp import ClientSession, StdioServerParameters
+# MCP Imports
+from mcp import ClientSession
 from mcp.client.sse import sse_client
-import httpx
 
+from ai_service.core.config import settings
 from ai_service.core.llm_factory import llm_manager
 from ai_service.schemas.api_models import TripRequest
 
@@ -29,13 +31,11 @@ class TravelAgent:
         מנקה את המחרוזת מסימני Markdown כמו ```json
         כדי למנוע קריסות של הפארסר.
         """
-        # ניקוי Markdown code blocks
         pattern = r"```json(.*?)```"
         match = re.search(pattern, json_str, re.DOTALL)
         if match:
             json_str = match.group(1).strip()
         else:
-            # ניסיון למצוא את ה-JSON בין סוגריים מסולסלים אם אין Markdown
             start = json_str.find("{")
             end = json_str.rfind("}")
             if start != -1 and end != -1:
@@ -49,7 +49,6 @@ class TravelAgent:
         """
         lc_tools = []
         try:
-            # הוספת Timeout כדי לא לתקוע את המערכת
             async with asyncio.timeout(3.0):
                 async with sse_client(self.mcp_url) as streams:
                     async with ClientSession(streams[0], streams[1]) as session:
@@ -107,26 +106,56 @@ class TravelAgent:
             response = await self.manager.invoke(messages)
             content = response.content if hasattr(response, 'content') else str(response)
             
-            # --- תיקון 1: ניקוי ה-JSON לפני הפארסר ---
+            # ניקוי ה-JSON לפני הפארסר
             cleaned_content = self._clean_json_string(content)
             
             try:
-                # ניסיון ראשון עם הפארסר של LangChain
                 result = parser.parse(cleaned_content)
             except Exception:
-                # Fallback: שימוש ב-json רגיל אם LangChain נכשל
-                logger.warning(f"⚠️ Standard parsing failed, attempting raw json load. Content snippet: {cleaned_content[:50]}...")
+                logger.warning(f"⚠️ Standard parsing failed, attempting raw json load.")
                 result = json.loads(cleaned_content)
 
             result["analyzed_vibe"] = analyzed_vibe
+
+            # --- הפעלת האוטומציה (n8n) ---
+            # אנחנו מפעילים את זה ברקע (Fire and Forget) כדי לא לעכב את התשובה למשתמש
+            if result and "itinerary" in result:
+                asyncio.create_task(self._trigger_automation(result, req))
+
             return result
             
         except Exception as e:
             logger.error(f"❌ AI Execution Failed: {e}")
-            # החזרת תשובה בסיסית במקרה של כישלון מוחלט כדי שהקליינט לא יקרוס
             return {
-                "summary": f"AI generation failed due to error: {str(e)}. Please try again.",
+                "summary": f"AI generation failed: {str(e)}",
                 "itinerary": [],
                 "budget_breakdown": {},
                 "analyzed_vibe": "Error"
             }
+
+    async def _trigger_automation(self, trip_data: dict, req: TripRequest):
+        """שולח את פרטי הטיול ל-n8n בצורה שקטה"""
+        print(f"DEBUG: Attempting to send data to n8n at {settings.N8N_WEBHOOK_URL}")
+        try:
+            # חישוב תאריכים דינמי (מתחילים מהיום)
+            start_date_obj = datetime.now()
+            end_date_obj = start_date_obj + timedelta(days=req.duration)
+            
+            # שליפת המייל (אם קיים בבקשה, אחרת דיפולטיבי)
+            # אם תוסיף שדה email ל-TripRequest בעתיד, שנה את זה ל-req.email
+            user_email = req.email if req.email else "user@example.com"
+            payload = {
+                "email": user_email,
+                "summary": f"Trip to {req.destination}: {trip_data.get('summary', '')[:200]}...", # תקציר למייל
+                "full_itinerary": str(trip_data.get("itinerary", [])), # המידע המלא
+                "start_date": start_date_obj.strftime("%Y-%m-%d"),
+                "end_date": end_date_obj.strftime("%Y-%m-%d")
+            }
+            
+            async with httpx.AsyncClient() as client:
+                # Timeout קצר כדי לא להיתקע אם n8n למטה
+                resp = await client.post(settings.N8N_WEBHOOK_URL, json=payload, timeout=3.0)
+                print(f"DEBUG: n8n response status: {resp.status_code}")
+                
+        except Exception as e:
+            print(f"ERROR sending to n8n: {e}")

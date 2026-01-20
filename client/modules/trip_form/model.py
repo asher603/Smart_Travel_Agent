@@ -10,6 +10,7 @@ class TripFormModel:
         self.interests = ""
         self.start_date = date.today()
         self.end_date = date.today()
+        self.email = None
 
     def is_valid(self):
         # Basic business logic validation
