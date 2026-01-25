@@ -1,6 +1,7 @@
 import base64
 import os
 import re
+import json
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QLineEdit, QComboBox, QScrollArea, QFrame, QSplitter, 
@@ -206,8 +207,8 @@ class TripViewerView(QWidget):
         self.trip_id = trip_response.get("trip_id")
         plan = trip_response
         dest = plan.get("destination", "Unknown")
-        self.current_context = f"Dest: {dest}, Budget: {plan.get('budget', '?')}"
         self.current_plan_data = plan
+        self.current_context = json.dumps(plan, default=str, indent=2)
         self.btn_pdf.setVisible(True)
         self.render_trip_block("Initial Plan", plan, is_new=True)
         # Trigger Image Gen
@@ -236,6 +237,11 @@ class TripViewerView(QWidget):
                 elif t == "image": 
                     self.render_image_in_placeholder(c, self.trip_counter, save=False)
         
+        if hasattr(self, 'current_plan_data') and self.current_plan_data:
+            self.current_context = json.dumps(self.current_plan_data, default=str, indent=2)
+        else:
+            self.current_context = json.dumps(full_data, default=str, indent=2)
+
         self.is_loading_mode = False
         if dest: self.fetch_weather(dest)
         if hasattr(self, 'current_plan_data'): self.btn_pdf.setVisible(True)
@@ -509,6 +515,7 @@ class TripViewerView(QWidget):
     def on_refine_done(self, res, msg):
         if res and "trip_plan" in res:
              self.current_plan_data = res["trip_plan"]
+             self.current_context = json.dumps(res["trip_plan"], default=str, indent=2)
              self.render_trip_block(f"Fix: {msg}", res["trip_plan"], is_new=True)
         else:
              self.add_bubble("Failed to refine plan.", False)
