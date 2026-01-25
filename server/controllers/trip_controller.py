@@ -94,6 +94,8 @@ async def generate_trip(req: GenerateTripRequest):
             plan_data["origin"] = req.origin
             plan_data["destination"] = req.destination
             plan_data["start_date"] = req.start_date
+            plan_data["budget"] = req.budget
+            plan_data["currency"] = req.currency
             
         except httpx.ConnectError:
             print("❌ AI Service Connection Refused")
