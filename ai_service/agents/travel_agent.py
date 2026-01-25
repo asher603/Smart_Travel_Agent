@@ -16,7 +16,7 @@ from mcp.client.sse import sse_client
 
 from ai_service.core.config import settings
 from ai_service.core.llm_factory import llm_manager
-from ai_service.schemas.api_models import TripRequest, ChatRequest
+from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest
 
 logger = logging.getLogger("uvicorn")
 
@@ -50,50 +50,50 @@ class TravelAgent:
             logger.error(f"❌ Chat Error: {e}")
             return {"answer": "I'm sorry, I encountered an error while processing your question."}
 
-    def _clean_json_string(self, json_str: str) -> str:
+    async def refine_trip(self, req: RefineRequest) -> Dict[str, Any]:
         """
-        מנקה את המחרוזת מסימני Markdown כמו ```json
-        כדי למנוע קריסות של הפארסר.
+        Refines an existing trip plan based on user instructions.
         """
-        pattern = r"```json(.*?)```"
-        match = re.search(pattern, json_str, re.DOTALL)
-        if match:
-            json_str = match.group(1).strip()
-        else:
-            start = json_str.find("{")
-            end = json_str.rfind("}")
-            if start != -1 and end != -1:
-                json_str = json_str[start : end + 1]
-        
-        return json_str
+        parser = JsonOutputParser()
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are an expert travel agent. Modify the existing itinerary based on the user's feedback. OUTPUT MUST BE RAW JSON ONLY."),
+            ("user", """
+             Current Plan:
+             {current_plan}
+             
+             User Instructions:
+             {instructions}
+             
+             IMPORTANT: Return the FULLY updated plan in valid JSON format. Keep the same structure.
+             Structure:
+             {{
+                "summary": "...",
+                "budget_breakdown": {{ ... }},
+                "itinerary": [ ... ]
+             }}
+             """)
+        ])
 
-    async def _fetch_mcp_tools(self) -> List[BaseTool]:
-        """
-        Connects to MCP server manually using the official SDK.
-        """
-        lc_tools = []
+        messages = prompt.format_messages(
+            current_plan=json.dumps(req.current_plan),
+            instructions=req.instructions
+        )
+        
         try:
-            async with asyncio.timeout(3.0):
-                async with sse_client(self.mcp_url) as streams:
-                    async with ClientSession(streams[0], streams[1]) as session:
-                        await session.initialize()
-                        result = await session.list_tools()
-                        
-                        for tool in result.tools:
-                            async def call_mcp_tool(t_name=tool.name, **kwargs):
-                                return await session.call_tool(t_name, arguments=kwargs)
-                            
-                            lc_tools.append(StructuredTool.from_function(
-                                func=None,
-                                coroutine=call_mcp_tool,
-                                name=tool.name,
-                                description=tool.description or "MCP Tool"
-                            ))
-                        logger.info(f"✅ Successfully loaded {len(lc_tools)} MCP tools")
-                        return lc_tools
+            response = await self.manager.invoke(messages)
+            content = response.content if hasattr(response, 'content') else str(response)
+            cleaned_content = self._clean_json_string(content)
+            
+            try:
+                result = parser.parse(cleaned_content)
+            except Exception:
+                result = json.loads(cleaned_content)
+                
+            return result
+            
         except Exception as e:
-            logger.warning(f"⚠️ Could not connect to MCP Server: {e}")
-            return []
+            logger.error(f"❌ Refine Failed: {e}")
+            raise e # Let the endpoint handle the error
 
     async def plan_trip(self, req: TripRequest, analyzed_vibe: str) -> Dict[str, Any]:
         # 1. הכנת הפרומפט
@@ -183,3 +183,48 @@ class TravelAgent:
                 
         except Exception as e:
             print(f"ERROR sending to n8n: {e}")
+
+    def _clean_json_string(self, json_str: str) -> str:
+        """
+        מנקה את המחרוזת מסימני Markdown כמו ```json
+        כדי למנוע קריסות של הפארסר.
+        """
+        pattern = r"```json(.*?)```"
+        match = re.search(pattern, json_str, re.DOTALL)
+        if match:
+            json_str = match.group(1).strip()
+        else:
+            start = json_str.find("{")
+            end = json_str.rfind("}")
+            if start != -1 and end != -1:
+                json_str = json_str[start : end + 1]
+        
+        return json_str
+
+    async def _fetch_mcp_tools(self) -> List[BaseTool]:
+        """
+        Connects to MCP server manually using the official SDK.
+        """
+        lc_tools = []
+        try:
+            async with asyncio.timeout(3.0):
+                async with sse_client(self.mcp_url) as streams:
+                    async with ClientSession(streams[0], streams[1]) as session:
+                        await session.initialize()
+                        result = await session.list_tools()
+                        
+                        for tool in result.tools:
+                            async def call_mcp_tool(t_name=tool.name, **kwargs):
+                                return await session.call_tool(t_name, arguments=kwargs)
+                            
+                            lc_tools.append(StructuredTool.from_function(
+                                func=None,
+                                coroutine=call_mcp_tool,
+                                name=tool.name,
+                                description=tool.description or "MCP Tool"
+                            ))
+                        logger.info(f"✅ Successfully loaded {len(lc_tools)} MCP tools")
+                        return lc_tools
+        except Exception as e:
+            logger.warning(f"⚠️ Could not connect to MCP Server: {e}")
+            return []
