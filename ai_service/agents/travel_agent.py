@@ -2,6 +2,7 @@ import logging
 import asyncio
 import re
 import json
+import ast
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
@@ -54,18 +55,23 @@ class TravelAgent:
         """
         Refines an existing trip plan based on user instructions.
         """
-        parser = JsonOutputParser()
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are an expert travel agent. Modify the existing itinerary based on the user's feedback. OUTPUT MUST BE RAW JSON ONLY."),
+            ("system", "You are a precise JSON-speaking travel agent. Modify the plan based on instructions."),
             ("user", """
              Current Plan:
              {current_plan}
              
-             User Instructions:
+             Instructions:
              {instructions}
              
-             IMPORTANT: Return the FULLY updated plan in valid JSON format. Keep the same structure.
-             Structure:
+             CRITICAL OUTPUT RULES:
+             1. Return ONLY the full updated JSON object.
+             2. NO Markdown, NO explanations, NO code blocks.
+             3. Use double quotes (") for all keys and strings.
+             4. Escape internal quotes (e.g., "City of \\"Love\\"").
+             5. Ensure commas separate all fields correctly.
+             
+             Return Structure:
              {{
                 "summary": "...",
                 "budget_breakdown": {{ ... }},
@@ -82,18 +88,28 @@ class TravelAgent:
         try:
             response = await self.manager.invoke(messages)
             content = response.content if hasattr(response, 'content') else str(response)
+            
+            # 1. Clean Markdown
             cleaned_content = self._clean_json_string(content)
             
+            # 2. Try strict JSON parse
             try:
-                result = parser.parse(cleaned_content)
-            except Exception:
                 result = json.loads(cleaned_content)
-                
+            except json.JSONDecodeError:
+                # 3. Fallback: Try parsing as a Python dict (handles single quotes/loose syntax)
+                try:
+                    logger.warning("⚠️ JSON parse failed, attempting AST eval...")
+                    result = ast.literal_eval(cleaned_content)
+                except Exception:
+                    # 4. Critical Fail - Log the bad content
+                    logger.error(f"❌ Failed to parse AI response. Raw content:\n{cleaned_content[:500]}...")
+                    raise ValueError("AI returned invalid format.")
+
             return result
             
         except Exception as e:
             logger.error(f"❌ Refine Failed: {e}")
-            raise e # Let the endpoint handle the error
+            raise e
 
     async def plan_trip(self, req: TripRequest, analyzed_vibe: str) -> Dict[str, Any]:
         # 1. הכנת הפרומפט
