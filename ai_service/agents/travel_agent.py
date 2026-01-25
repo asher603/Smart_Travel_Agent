@@ -11,12 +11,12 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.tools import BaseTool, StructuredTool
 
 # MCP Imports
-from mcp import ClientSession
+from mcp_server import ClientSession
 from mcp.client.sse import sse_client
 
 from ai_service.core.config import settings
 from ai_service.core.llm_factory import llm_manager
-from ai_service.schemas.api_models import TripRequest
+from ai_service.schemas.api_models import TripRequest, ChatRequest
 
 logger = logging.getLogger("uvicorn")
 
@@ -25,6 +25,30 @@ class TravelAgent:
         self.manager = llm_manager
         # כתובת ה-MCP בתוך הדוקר
         self.mcp_url = "http://mcp-server:8000/sse"
+
+    async def answer_question(self, req: ChatRequest) -> Dict[str, str]:
+        """
+        Answers a user question based on the provided context (trip plan).
+        """
+        try:
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", "You are a helpful travel assistant. Answer the user's question concisely based strictly on the provided trip context."),
+                ("user", "Trip Context:\n{context}\n\nUser Question: {question}")
+            ])
+            
+            messages = prompt.format_messages(
+                context=req.context,
+                question=req.question
+            )
+            
+            response = await self.manager.invoke(messages)
+            content = response.content if hasattr(response, 'content') else str(response)
+            
+            return {"answer": content}
+            
+        except Exception as e:
+            logger.error(f"❌ Chat Error: {e}")
+            return {"answer": "I'm sorry, I encountered an error while processing your question."}
 
     def _clean_json_string(self, json_str: str) -> str:
         """

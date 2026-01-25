@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 import logging
-from ai_service.schemas.api_models import TripRequest
+from ai_service.schemas.api_models import TripRequest, ChatRequest
 from ai_service.agents.travel_agent import TravelAgent
 
 # שים לב: לא מגדירים כאן prefix, זה קורה ב-main.py
@@ -14,6 +14,17 @@ async def generate_trip(request: TripRequest):
         agent = TravelAgent()
         # מנסים לקבל טיול (כרגע גם אם ה-MCP נכשל, הוא יחזיר משהו מה-LLM)
         result = await agent.plan_trip(request, analyzed_vibe="fun")
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/chat")
+async def chat_about_trip(request: ChatRequest):
+    logger.info(f"💬 Handling question: {request.question}")
+    try:
+        agent = TravelAgent()
+        result = await agent.answer_question(request)
         return result
     except Exception as e:
         logger.error(f"❌ Error: {e}")

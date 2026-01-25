@@ -1,6 +1,6 @@
 from fastmcp import FastMCP
-from ai_service.mcp.tools.flights import search_flights_tool
-from ai_service.mcp.tools.weather import get_weather_tool
+from ai_service.mcp_server.tools.flights import search_flights_tool
+from ai_service.mcp_server.tools.weather import get_weather_tool
 
 # 1. יצירת האובייקט
 mcp = FastMCP("Travel Agent Tools")
