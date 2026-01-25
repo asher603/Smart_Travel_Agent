@@ -11,7 +11,7 @@ from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.tools import BaseTool, StructuredTool
 
 # MCP Imports
-from mcp_server import ClientSession
+from mcp import ClientSession
 from mcp.client.sse import sse_client
 
 from ai_service.core.config import settings
