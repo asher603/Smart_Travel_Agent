@@ -39,3 +39,7 @@ class RefineRequest(BaseModel):
     instructions: str
     current_plan: Dict[str, Any]
     model: str = "gemini"
+
+class ImageRequest(BaseModel):
+    destination: str
+    interest: str

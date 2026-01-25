@@ -1,9 +1,9 @@
 from fastapi import APIRouter, HTTPException
 import logging
-from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest
+from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest, ImageRequest
 from ai_service.agents.travel_agent import TravelAgent
+from ai_service.ml_models.image_generator import generate_trip_image
 
-# שים לב: לא מגדירים כאן prefix, זה קורה ב-main.py
 router = APIRouter()
 logger = logging.getLogger("uvicorn")
 
@@ -39,4 +39,20 @@ async def refine_trip_plan(request: RefineRequest):
         return result
     except Exception as e:
         logger.error(f"❌ Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/generate_image")
+async def create_image(req: ImageRequest):
+    logger.info(f"🎨 Generating image for: {req.destination}")
+    try:
+        # We pass the user's 'interest' as the 'vibe' for the prompt
+        image_b64 = generate_trip_image(req.destination, req.interest)
+        
+        if not image_b64:
+            raise HTTPException(status_code=500, detail="Image generation returned empty")
+            
+        return {"image_base64": image_b64}
+    except Exception as e:
+        logger.error(f"❌ Image Error: {e}")
+        # Return None or error so the server can handle the fallback
         raise HTTPException(status_code=500, detail=str(e))
