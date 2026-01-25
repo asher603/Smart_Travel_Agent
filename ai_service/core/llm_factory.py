@@ -44,31 +44,47 @@ class LLMFactory:
             keep_alive="1h"   # תוספת: להשאיר את המודל בזיכרון לשעה
         )
 
-    async def invoke(self, messages):
+    async def invoke(self, messages, preferred_model="gemini"):
         """
-        Executes the prompt with automatic fallback handling.
+        Executes with fallback starting from the preferred model.
+        Order: Gemini -> Groq -> Ollama
         """
-        # Attempt 1: Google
-        try:
-            llm = self._get_primary_model()
-            return await llm.ainvoke(messages)
-        except Exception as e:
-            print(f"🚨 Primary LLM (Google) Failed: {e}")
+        model_key = preferred_model.lower()
+        
+        # Priority Chain
+        chain = ["gemini", "groq", "ollama"]
+        
+        # Determine starting point
+        if model_key in chain:
+            start_index = chain.index(model_key)
+        else:
+            start_index = 0 # Default to Gemini
+
+        errors = []
+
+        # Iterate from the selected model downwards
+        for i in range(start_index, len(chain)):
+            current_stage = chain[i]
             
-            # Attempt 2: Groq
             try:
-                llm_backup = self._get_backup_model()
-                return await llm_backup.ainvoke(messages)
-            except Exception as e2:
-                print(f"❌ Backup LLM (Groq) Failed: {e2}")
-                
-                # Attempt 3: Ollama (Local)
-                try:
-                    llm_local = self._get_local_model()
-                    return await llm_local.ainvoke(messages)
-                except Exception as e3:
-                    print(f"💀 All LLMs Failed. Local Error: {e3}")
-                    raise e3
+                if current_stage == "gemini":
+                    print("🤖 Using Model: Google Gemini")
+                    llm = self._get_primary_model()
+                elif current_stage == "groq":
+                    print("⚡ Using Model: Groq Llama")
+                    llm = self._get_backup_model()
+                else:
+                    print("🦙 Using Model: Local Ollama")
+                    llm = self._get_local_model()
+
+                return await llm.ainvoke(messages)
+
+            except Exception as e:
+                print(f"❌ {current_stage.capitalize()} Failed: {e}")
+                errors.append(f"{current_stage}: {e}")
+                # Continue to next model in loop
+        
+        raise Exception(f"All models failed. Errors: {errors}")
 
     def get_llm(self):
         return self._get_primary_model()

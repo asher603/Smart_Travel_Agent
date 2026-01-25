@@ -115,14 +115,35 @@ class TripViewerView(QWidget):
         
         splitter.addWidget(self.toc_widget); splitter.addWidget(self.scroll_area)
         main_layout.addWidget(splitter)
-        
-        # Chat
-        chat_box = QHBoxLayout(); chat_box.setContentsMargins(10, 10, 10, 10)
-        self.chat_input = QLineEdit(); self.chat_input.setPlaceholderText("Ask a question or request a change...")
+
+        # Mode Selector
+        self.mode_combo = QComboBox()
+        self.mode_combo.addItems(["❓ Question", "🛠️ Fix / New Trip"])
+
+        # AI Model Selector
+        self.model_combo = QComboBox()
+        self.model_combo.addItems(["Gemini", "Groq", "Ollama"])
+        self.model_combo.setToolTip("Select AI Model")
+        self.model_combo.setFixedWidth(80)
+
+        # Chat Input
+        self.chat_input = QLineEdit()
+        self.chat_input.setPlaceholderText("Ask a question or request a change...")
         self.chat_input.returnPressed.connect(self.on_send)
-        self.mode_combo = QComboBox(); self.mode_combo.addItems(["❓ Question", "🛠️ Fix / New Trip"])
-        btn_send = QPushButton("➤"); btn_send.clicked.connect(self.on_send)
-        chat_box.addWidget(self.mode_combo); chat_box.addWidget(self.chat_input); chat_box.addWidget(btn_send)
+
+        # Send Button
+        btn_send = QPushButton("➤")
+        btn_send.clicked.connect(self.on_send)
+        btn_send.setCursor(Qt.PointingHandCursor)
+        btn_send.setToolTip("Send Message (or press Enter)")
+
+        # Chat Box
+        chat_box = QHBoxLayout()
+        chat_box.setContentsMargins(10, 10, 10, 10)
+        chat_box.addWidget(self.mode_combo)
+        chat_box.addWidget(self.model_combo)
+        chat_box.addWidget(self.chat_input)
+        chat_box.addWidget(btn_send)
         main_layout.addLayout(chat_box)
 
     def start_worker(self, worker):
@@ -472,14 +493,16 @@ class TripViewerView(QWidget):
         if not msg: return
         self.add_bubble(msg, True)
         
-        mode = self.mode_combo.currentText()
-        if "Question" in mode:
-            w = ChatWorker(self.api, msg, self.current_context)
+        selected_mode = self.mode_combo.currentText()
+        selected_model = self.model_combo.currentText().lower()
+
+        if "Question" in selected_mode:
+            w = ChatWorker(self.api, msg, self.current_context, selected_model)
             w.finished_signal.connect(lambda ans: self.add_bubble(ans, False))
             self.start_worker(w)
         else:
             self.add_bubble("Refining Plan...", False)
-            w = RefineWorker(self.api, self.trip_id, self.current_plan_data, msg)
+            w = RefineWorker(self.api, self.trip_id, self.current_plan_data, msg, selected_model)
             w.finished.connect(lambda res: self.on_refine_done(res, msg))
             self.start_worker(w)
 

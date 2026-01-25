@@ -17,12 +17,12 @@ class ImageWorker(QThread):
 
 class ChatWorker(QThread):
     finished_signal = Signal(str)
-    def __init__(self, api, question, context):
+    def __init__(self, api, question, context, model="gemini"):
         super().__init__()
-        self.api = api; self.question = question; self.context = context
+        self.api = api; self.question = question; self.context = context; self.model = model
     def run(self):
         try:
-            response = self.api.post("/ai/ask", {"question": self.question, "context": self.context})
+            response = self.api.post("/ai/ask", {"question": self.question, "context": self.context, "model": self.model})
             self.finished_signal.emit(response.get("answer", "No response"))
         except: self.finished_signal.emit("Error connecting")
 
@@ -57,18 +57,20 @@ class BudgetWorker(QThread):
 class RefineWorker(QThread):
     finished = Signal(dict)
 
-    def __init__(self, api, trip_id, plan, instr):
+    def __init__(self, api, trip_id, plan, instr, model="gemini"):
         super().__init__()
         self.api = api
         self.trip_id = trip_id
         self.plan = plan
         self.instr = instr
+        self.model = model
 
     def run(self):
         payload = {
             "trip_id": self.trip_id,
             "instructions": self.instr,
-            "current_plan": self.plan
+            "current_plan": self.plan,
+            "model": self.model
         }
         res = self.api.post("/trips/refine", payload)
 

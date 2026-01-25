@@ -19,11 +19,13 @@ class GenerateTripRequest(BaseModel):
     start_date: str
     end_date: str
     username: Optional[str] = "guest"
+    model: Optional[str] = "gemini"
 
 class RefineTripRequest(BaseModel):
     trip_id: str
     instructions: str
     current_plan: Dict[str, Any]
+    model: Optional[str] = "gemini"
 
 class HistoryRequest(BaseModel):
     username: str
@@ -68,7 +70,8 @@ async def generate_trip(req: GenerateTripRequest):
         "interest": req.interests,
         "duration": duration,
         "start_date": req.start_date,
-        "end_date": req.end_date
+        "end_date": req.end_date,
+        "model": req.model
     }
 
     async with httpx.AsyncClient() as client:
@@ -78,7 +81,7 @@ async def generate_trip(req: GenerateTripRequest):
             ai_resp = await client.post(
                 f"{settings.AI_SERVICE_URL}/generate",
                 json=ai_payload,
-                timeout=120.0 
+                timeout=300.0 
             )
             
             if ai_resp.status_code != 200:
@@ -149,7 +152,7 @@ async def refine_trip(req: RefineTripRequest):
             ai_resp = await client.post(
                 f"{settings.AI_SERVICE_URL}/refine",
                 json=req.model_dump(),
-                timeout=120.0
+                timeout=300.0
             )
             
             if ai_resp.status_code != 200:

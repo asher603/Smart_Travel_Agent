@@ -80,7 +80,7 @@ class TripFormView(QWidget):
 
         # --- Inputs ---
         self.input_dest = ModernInput("Destination (e.g. Paris)", icon_char="📍")
-        self.input_origin = ModernInput("Origin (e.g. New York)", icon_char="🏠")
+        self.input_origin = ModernInput("Origin (e.g. Tel Aviv)", icon_char="🏠")
         
         # Row: Dates
         date_layout = QHBoxLayout()
@@ -99,7 +99,6 @@ class TripFormView(QWidget):
         budget_layout.setSpacing(20)
         
         self.input_budget = ModernInput("Budget", icon_char="💰")
-        # Ensure budget input doesn't squash
         self.input_budget.setMinimumWidth(200) 
         
         self.combo_currency = QComboBox()
@@ -120,6 +119,12 @@ class TripFormView(QWidget):
             }
             QPlainTextEdit:focus { border: 2px solid #3B82F6; background: white; }
         """)
+
+        # Model Selection
+        self.combo_model = QComboBox()
+        self.combo_model.addItems(["Gemini", "Groq", "Ollama"])
+        self.combo_model.setCursor(Qt.PointingHandCursor)
+        self.combo_model.setStyleSheet("QComboBox { padding: 5px; font-weight: bold; color: #1e293b; }")
 
         # Buttons
         self.btn_generate = ScaleButton("✨ Generate Trip", "#3B82F6", "#2563EB")
@@ -145,6 +150,9 @@ class TripFormView(QWidget):
         card_layout.addWidget(self._create_label("Preferences", "#334155"))
         card_layout.addWidget(self.input_interests)
         
+        card_layout.addWidget(self._create_label("AI Model:", "#334155"))
+        card_layout.addWidget(self.combo_model)
+
         card_layout.addSpacing(20)
         card_layout.addWidget(self.btn_generate)
         card_layout.addWidget(self.btn_back)
@@ -172,7 +180,8 @@ class TripFormView(QWidget):
             "currency": self.combo_currency.currentText(),
             "interests": self.input_interests.toPlainText(),
             "start_date": self.date_start.date().toString("yyyy-MM-dd"),
-            "end_date": self.date_end.date().toString("yyyy-MM-dd")
+            "end_date": self.date_end.date().toString("yyyy-MM-dd"),
+            "model": self.combo_model.currentText().lower()
         }
         self.generate_requested.emit(data)
 

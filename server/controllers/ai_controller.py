@@ -12,6 +12,7 @@ class ImageRequest(BaseModel):
 class ChatRequest(BaseModel):
     question: str
     context: str
+    model: str = "gemini"
 
 @router.post("/generate_image")
 async def generate_image(req: ImageRequest):
@@ -47,7 +48,7 @@ async def ask_chat(req: ChatRequest):
             resp = await client.post(
                 f"{settings.AI_SERVICE_URL}/chat",
                 json=req.dict(),
-                timeout=30.0
+                timeout=300.0
             )
             if resp.status_code == 200:
                 return resp.json()

@@ -8,7 +8,8 @@ class TripRequest(BaseModel):
     budget: int
     currency: str = "USD"
     interest: str
-    email: Optional[str] = "user@example.com" # ברירת מחדל למקרה שלא נשלח
+    email: Optional[str] = "user@example.com" 
+    model: str = "gemini"
 
 class BudgetBreakdown(BaseModel):
     flights: int = Field(alias="Flights")
@@ -28,12 +29,13 @@ class TripResponse(BaseModel):
     budget_breakdown: BudgetBreakdown
     itinerary: List[DayActivity]
 
-# --- New Models for Chat & Refine ---
 class ChatRequest(BaseModel):
     question: str
     context: str
+    model: str = "gemini"
 
 class RefineRequest(BaseModel):
     trip_id: Optional[str] = None
     instructions: str
     current_plan: Dict[str, Any]
+    model: str = "gemini"

@@ -1,7 +1,6 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from ai_service.core.config import settings
-# שים לב: Import למופע (instance) ולא למחלקה
 from ai_service.core.llm_factory import llm_manager 
 from ai_service.ml_models.analyzer import preload_vibe_model
 
@@ -17,7 +16,6 @@ async def lifespan(app: FastAPI):
     # 2. Pre-load Models
     try:
         print("🧠 Warming up LLM Factory...")
-        # התיקון הקריטי: קריאה לפונקציה מתוך המופע
         llm = llm_manager.get_llm() 
         print(f"✅ LLM Manager initialized.")
     except Exception as e:

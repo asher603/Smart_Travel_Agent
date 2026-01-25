@@ -42,7 +42,7 @@ class TravelAgent:
                 question=req.question
             )
             
-            response = await self.manager.invoke(messages)
+            response = await self.manager.invoke(messages, preferred_model=req.model)
             content = response.content if hasattr(response, 'content') else str(response)
             
             return {"answer": content}
@@ -55,6 +55,7 @@ class TravelAgent:
         """
         Refines an existing trip plan based on user instructions.
         """
+        # Prompt Setup:
         prompt = ChatPromptTemplate.from_messages([
             ("system", "You are a precise JSON-speaking travel agent. Modify the plan based on instructions."),
             ("user", """
@@ -86,7 +87,7 @@ class TravelAgent:
         )
         
         try:
-            response = await self.manager.invoke(messages)
+            response = await self.manager.invoke(messages, preferred_model=req.model)
             content = response.content if hasattr(response, 'content') else str(response)
             
             # 1. Clean Markdown
@@ -112,7 +113,7 @@ class TravelAgent:
             raise e
 
     async def plan_trip(self, req: TripRequest, analyzed_vibe: str) -> Dict[str, Any]:
-        # 1. הכנת הפרומפט
+        # Prompt Setup:
         parser = JsonOutputParser()
         prompt = ChatPromptTemplate.from_messages([
             ("system", "You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW JSON ONLY."),
@@ -143,10 +144,10 @@ class TravelAgent:
         )
         
         try:
-            response = await self.manager.invoke(messages)
+            response = await self.manager.invoke(messages, preferred_model=req.model)
             content = response.content if hasattr(response, 'content') else str(response)
             
-            # ניקוי ה-JSON לפני הפארסר
+            # JSON Cleaning & Parsing
             cleaned_content = self._clean_json_string(content)
             
             try:
@@ -157,7 +158,7 @@ class TravelAgent:
 
             result["analyzed_vibe"] = analyzed_vibe
 
-            # --- הפעלת האוטומציה (n8n) ---
+            # --- n8n Automation ---
             # אנחנו מפעילים את זה ברקע (Fire and Forget) כדי לא לעכב את התשובה למשתמש
             if result and "itinerary" in result:
                 asyncio.create_task(self._trigger_automation(result, req))
