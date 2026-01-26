@@ -17,12 +17,15 @@ class StateUpdate(BaseModel):
 
 @router.post("/events/create_trip")
 def create_trip(payload: dict):
-    trip_id = str(uuid.uuid4())
+    # --- התיקון: שימוש במזהה שהגיע מהשרת במקום לייצר חדש ---
+    # אם השרת שלח trip_id, נשתמש בו. אחרת, נייצר אחד לגיבוי.
+    trip_id = payload.get("trip_id") or str(uuid.uuid4())
+    
     event = TripCreated(
-        trip_id=trip_id,
+        trip_id=trip_id, # משתמשים ב-ID הזה
         username=payload["username"],
         destination=payload["destination"],
-        initial_request=payload
+        initial_request=payload.get("initial_request", payload) # טיפול בטוח אם חסר
     )
     store.append(event)
     return {"trip_id": trip_id}

@@ -51,6 +51,7 @@ class ImagePopup(QDialog):
 # --- MAIN VIEW ---
 class TripViewerView(QWidget):
     back_signal = Signal()
+    state_updated_signal = Signal(list)
 
     def __init__(self):
         super().__init__()
@@ -218,25 +219,37 @@ class TripViewerView(QWidget):
     def load_existing_trip(self, full_data):
         self.is_loading_mode = True 
         self.reset_ui()
-        self.trip_id = full_data.get("id") or full_data.get("_id")
+        
+        # זיהוי מזהה הטיול בצורה רובסטית
+        self.trip_id = full_data.get("id") or full_data.get("_id") or full_data.get("trip_id")
         self.username = full_data.get("username", "")
         dest = full_data.get("destination", "")
         self.current_context = f"Dest: {dest}"
         
-        history = full_data.get("chat_history", [])
+        # --- התיקון הקריטי כאן ---
+        # מעתיקים את ההיסטוריה מהשרת לזיכרון המקומי
+        # זה מבטיח שהודעה חדשה תתווסף לרשימה הקיימת ולא תדרוס אותה
+        self.chat_history_state = full_data.get("chat_history", [])
+        
+        # משתמשים במשתנה המקומי לציור המסך
+        history = self.chat_history_state
+        
         if not history and "destination" in full_data:
              self.render_trip_block("Saved Plan", full_data, save=False)
              self.current_plan_data = full_data
         else:
             for item in history:
-                t = item.get("type"); c = item.get("content")
-                if t == "text": self.add_bubble(c, item.get("is_user"), save=False)
+                t = item.get("type")
+                c = item.get("content")
+                if t == "text": 
+                    self.add_bubble(c, item.get("is_user"), save=False)
                 elif t == "plan": 
                     self.current_plan_data = c["plan"]
                     self.render_trip_block(c["title"], c["plan"], save=False)
                 elif t == "image": 
                     self.render_image_in_placeholder(c, self.trip_counter, save=False)
         
+        # עדכון הקונטקסט ל-AI
         if hasattr(self, 'current_plan_data') and self.current_plan_data:
             self.current_context = json.dumps(self.current_plan_data, default=str, indent=2)
         else:
@@ -245,7 +258,7 @@ class TripViewerView(QWidget):
         self.is_loading_mode = False
         if dest: self.fetch_weather(dest)
         if hasattr(self, 'current_plan_data'): self.btn_pdf.setVisible(True)
-
+        
     def render_trip_block(self, title, plan_data, is_new=False, save=True):
         self.trip_counter += 1
         ver_id = self.trip_counter
@@ -529,9 +542,8 @@ class TripViewerView(QWidget):
             self.save_state_to_server()
 
     def save_state_to_server(self):
-        if self.trip_id:
-            w = StateSaverWorker(self.api, self.trip_id, self.chat_history_state)
-            self.start_worker(w)
+       if not self.is_loading_mode:
+            self.state_updated_signal.emit(self.chat_history_state)
 
     def scroll_to_item(self, item):
         w = self.trip_widgets_map.get(id(item))

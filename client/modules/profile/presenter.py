@@ -3,12 +3,13 @@ from PySide6.QtWidgets import QMessageBox
 
 class DataWorker(QThread):
     finished = Signal(dict)
-    def __init__(self, model, username):
+    def __init__(self, model):
         super().__init__()
         self.model = model
-        self.username = username
+
     def run(self):
-        data = self.model.fetch_user_data(self.username)
+        # המודל ייגש לשרת (פעולה איטית) ויחזיר את הנתונים
+        data = self.model.fetch_user_data()
         self.finished.emit(data)
 
 class ProfilePresenter(QObject):
@@ -21,52 +22,72 @@ class ProfilePresenter(QObject):
         # View connections
         self.view.back_signal.connect(self.on_back)
         self.view.logout_signal.connect(self.on_logout)
-        self.view.save_prefs_signal.connect(self.on_save_prefs)
         self.view.save_identity_signal.connect(self.on_save_identity)
         self.view.change_pass_signal.connect(self.on_change_password)
         
-        # Event Bus
-        self.bus.subscribe("SHOW_PROFILE", self.load_profile)
-        # 1. CRITICAL: Listen for login success from AuthPresenter
+        # Event Bus connections
+        self.bus.subscribe("NAVIGATE", self.check_navigation)
         self.bus.subscribe("login_success", self.on_user_login)
 
     def on_user_login(self, data):
-        """Captures the username immediately upon login"""
+        """שומרים את שם המשתמש מיד כשהוא מתחבר"""
         username = data.get("username")
         if username:
-            self.model.user_stats["username"] = username
-            print(f"👤 Profile captured login user: {username}")
+            self.model.set_current_user(username)
 
     def load_profile(self, data):
-        # 2. CRITICAL: Use the captured username
-        saved_user = self.model.user_stats.get("username")
-        # Priority: Event Data > Saved User > Guest
-        username = data.get("username") or saved_user or "Guest"
-        
-        # Update view immediately so "Guest" doesn't flash
-        self.view.update_view({"username": username})
-        
-        self.worker = DataWorker(self.model, username)
-        self.worker.finished.connect(self.on_data_ready)
-        self.worker.start()
+        """נקרא כשהמשתמש נכנס למסך הפרופיל"""
+        # 1. Optimistic Update: מציגים מיד את מה שיש לנו בזיכרון (שם משתמש)
+        # כדי שהמשתמש לא יראה "Guest" עד שהשרת יענה
+        initial_data = {
+            "username": self.model.current_username or "Guest",
+            "email": self.model.user_data.get("email", "")
+        }
+        self.view.update_view(initial_data)
+
+        # 2. Background Fetch: שולחים בקשה לשרת להביא נתונים עדכניים ומלאים
+        if self.model.current_username:
+            self.worker = DataWorker(self.model)
+            self.worker.finished.connect(self.on_data_ready)
+            self.worker.start()
 
     def on_data_ready(self, full_data):
+        """המידע חזר מהשרת - מעדכנים את המסך סופית"""
         self.view.update_view(full_data)
 
-    def on_save_prefs(self, prefs):
-        u = self.model.user_stats.get("username")
-        self.model.save_profile_data(u, "preferences", prefs)
-
     def on_save_identity(self, data):
-        u = self.model.user_stats.get("username")
-        self.model.save_profile_data(u, "identity", data)
-        QMessageBox.information(self.view, "Updated", "Profile updated!")
+        new_email = data.get("email")
+        ok, msg = self.model.save_profile_data(new_email)
+        
+        if ok:
+            QMessageBox.information(self.view, "Success", msg)
+        else:
+            QMessageBox.warning(self.view, "Error", msg)
 
-    def on_change_password(self, o, n):
-        u = self.model.user_stats.get("username")
-        ok, msg = self.model.change_password(u, o, n)
-        if ok: QMessageBox.information(self.view, "Success", msg)
-        else: QMessageBox.warning(self.view, "Error", msg)
+    def on_change_password(self, old_pass, new_pass):
+        ok, msg = self.model.change_password(old_pass, new_pass)
+        
+        if ok: 
+            QMessageBox.information(self.view, "Success", msg)
+            self.view.inp_old_pass.clear()
+            self.view.inp_new_pass.clear()
+        else: 
+            QMessageBox.warning(self.view, "Error", msg)
 
-    def on_back(self): self.bus.publish("NAVIGATE", {"index": 1})
-    def on_logout(self): self.model.logout(); self.bus.publish("NAVIGATE", {"index": 0})
+    def on_back(self): 
+        self.bus.publish("NAVIGATE", {"index": 1})
+
+    def check_navigation(self, data):
+        # בודק אם הניווט הוא למסך הפרופיל (אינדקס 5)
+        if data.get("index") == 5:
+            # לוקח את שם המשתמש מהאירוע ומעדכן את המודל
+            username = data.get("username")
+            if username:
+                self.model.set_current_user(username)
+            
+            # מפעיל את טעינת המסך
+            self.load_profile(data)
+        
+    def on_logout(self): 
+        self.model.logout()
+        self.bus.publish("NAVIGATE", {"index": 0})
