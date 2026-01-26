@@ -9,8 +9,15 @@ from typing import Optional, List, Dict, Any
 from server.core.config import settings
 from server.services.flight_service import flight_service
 
-# --- Request Models ---
+# ============================================================================
+# Request Models
+# ============================================================================
+
 class GenerateTripRequest(BaseModel):
+    """
+    Payload for generating a new trip.
+    Includes user preferences, budget, and travel dates.
+    """
     destination: str
     origin: str
     budget: str
@@ -22,6 +29,9 @@ class GenerateTripRequest(BaseModel):
     model: Optional[str] = "gemini"
 
 class RefineTripRequest(BaseModel):
+    """
+    Payload for refining an existing trip plan based on user instructions.
+    """
     trip_id: str
     instructions: str
     current_plan: Dict[str, Any]
@@ -45,11 +55,24 @@ class UpdateStateRequest(BaseModel):
     trip_id: str
     chat_history: list
 
+# ============================================================================
+# API Router
+# ============================================================================
+
 router = APIRouter(prefix="/trips", tags=["Trips"])
 
 # --- 1. GENERATE TRIP ---
 @router.post("/generate")
 async def generate_trip(req: GenerateTripRequest):
+    """
+    Main endpoint to generate a travel itinerary.
+    
+    Process:
+    1. Calculates trip duration.
+    2. Fetches user email from Data Service (for automation).
+    3. Calls AI Service to generate the plan.
+    4. Saves the generated trip to Data Service (MongoDB).
+    """
     print(f"📡 Generating trip for {req.destination}...")
     
     # 1. Calculate Duration
@@ -61,20 +84,50 @@ async def generate_trip(req: GenerateTripRequest):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid Date Format")
 
-    # 2. Prepare Payload for AI
-    ai_payload = {
-        "destination": req.destination,
-        "origin": req.origin,
-        "budget": req.budget,
-        "currency": req.currency,
-        "interest": req.interests,
-        "duration": duration,
-        "start_date": req.start_date,
-        "end_date": req.end_date,
-        "model": req.model
-    }
-
     async with httpx.AsyncClient() as client:
+        
+        # ---------------------------------------------------------
+        # 2. Fetch User Email (Fix for n8n Automation)
+        # ---------------------------------------------------------
+        # We attempt to fetch the user's email from the profile service
+        # so the AI service can pass it to the automation workflow.
+        user_email = "user@example.com" # Default fallback
+        
+        if req.username and req.username.lower() != "guest":
+            try:
+                # Reuse the client to call Data Service
+                profile_resp = await client.post(
+                    f"{settings.DATA_SERVICE_URL}/users/get_profile",
+                    json={"username": req.username},
+                    timeout=2.0
+                )
+                
+                if profile_resp.status_code == 200:
+                    profile_data = profile_resp.json()
+                    if profile_data.get("email"):
+                        user_email = profile_data["email"]
+                        print(f"✅ Email fetched for automation: {user_email}")
+                    else:
+                        print("⚠️ User has no email saved in profile.")
+            except Exception as e:
+                print(f"⚠️ Could not fetch email for automation: {e}")
+
+        # ---------------------------------------------------------
+        # 3. Prepare Payload for AI Service
+        # ---------------------------------------------------------
+        ai_payload = {
+            "destination": req.destination,
+            "origin": req.origin,
+            "budget": req.budget,
+            "currency": req.currency,
+            "interest": req.interests,
+            "duration": duration,
+            "start_date": req.start_date,
+            "end_date": req.end_date,
+            "model": req.model,
+            "email": user_email  # <--- Injected email here
+        }
+
         # A. Call AI Service
         try:
             print(f"   -> Calling AI Service at {settings.AI_SERVICE_URL}/generate...")
@@ -90,7 +143,7 @@ async def generate_trip(req: GenerateTripRequest):
                 
             plan_data = ai_resp.json()
             
-            # Inject Metadata into Plan
+            # Inject Metadata into the Plan object
             plan_data["origin"] = req.origin
             plan_data["destination"] = req.destination
             plan_data["start_date"] = req.start_date
@@ -107,7 +160,9 @@ async def generate_trip(req: GenerateTripRequest):
             print(f"⚠️ AI Generation Failed: {e}. Returning Mock Data.")
             raise HTTPException(status_code=500, detail=f"AI Generation Failed: {str(e)}")
 
-        # B. Save to Data Service (תיקון לבעיית ההיסטוריה)
+        # ---------------------------------------------------------
+        # 4. Save to Data Service (Persistence)
+        # ---------------------------------------------------------
         new_trip_id = str(uuid.uuid4())
         plan_data["trip_id"] = new_trip_id
         
@@ -126,31 +181,30 @@ async def generate_trip(req: GenerateTripRequest):
             save_resp = await client.post(
                 f"{settings.DATA_SERVICE_URL}/events/create_trip",
                 json=save_payload,
-                timeout=10.0 # Timeout קצר, שלא יתקע אם ה-DB איטי
+                timeout=10.0 # Short timeout to prevent hanging
             )
             
             if save_resp.status_code not in [200, 201]:
-                # לוג קריטי: אם זה קורה, הטיול לא נשמר
                 print(f"❌ CRITICAL: Data Service failed to save trip! Status: {save_resp.status_code}, Body: {save_resp.text}")
             else:
                 print("✅ Trip saved to history successfully.")
                 
         except Exception as e:
-            # כאן אנחנו תופסים שגיאות חיבור ל-Data Service
             print(f"❌ CRITICAL: Exception saving to Data Service: {e}")
-            # הערה: אנחנו עדיין מחזירים את הטיול למשתמש כדי לא 'להעניש' אותו,
-            # אבל בקונסול תראה עכשיו בבירור למה זה לא נשמר.
+            # Note: We still return the plan to the user even if saving failed.
 
         return {"status": "success", "trip": plan_data}
 
 # --- 2. REFINE TRIP ---
 @router.post("/refine")
 async def refine_trip(req: RefineTripRequest):
+    """
+    Sends modification instructions to the AI Service to update an existing plan.
+    """
     print(f"♻️ Refining Trip {req.trip_id} with instruction: {req.instructions}")
     
     async with httpx.AsyncClient() as client:
         try:
-            # Note: You might need to add /refine endpoint to AI Service later
             ai_resp = await client.post(
                 f"{settings.AI_SERVICE_URL}/refine",
                 json=req.model_dump(),
@@ -170,6 +224,9 @@ async def refine_trip(req: RefineTripRequest):
 # --- 3. HISTORY & DETAILS ---
 @router.post("/history")
 async def get_history(req: HistoryRequest):
+    """
+    Fetches the list of past trips for a specific user.
+    """
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(f"{settings.DATA_SERVICE_URL}/user/{req.username}/summary")
@@ -183,6 +240,9 @@ async def get_history(req: HistoryRequest):
 
 @router.post("/details")
 async def get_trip_details(req: TripIdRequest):
+    """
+    Retrieves the full details of a specific trip by ID.
+    """
     async with httpx.AsyncClient() as client:
         try:
             resp = await client.get(f"{settings.DATA_SERVICE_URL}/trips/{req.trip_id}")
@@ -194,12 +254,18 @@ async def get_trip_details(req: TripIdRequest):
 
 @router.post("/delete")
 async def delete_trip(req: TripIdRequest):
+    """
+    Deletes a trip from the database.
+    """
     async with httpx.AsyncClient() as client:
         await client.delete(f"{settings.DATA_SERVICE_URL}/trips/{req.trip_id}")
         return {"status": "success"}
 
 @router.post("/update_state")
 async def update_trip_state(req: UpdateStateRequest):
+    """
+    Updates the state of a trip (e.g., chat history) without regenerating the plan.
+    """
     async with httpx.AsyncClient() as client:
         await client.put(f"{settings.DATA_SERVICE_URL}/trips/{req.trip_id}/state", json={"chat_history": req.chat_history})
         return {"status": "saved"}
@@ -207,6 +273,9 @@ async def update_trip_state(req: UpdateStateRequest):
 # --- 4. UTILITIES ---
 @router.post("/flights")
 def get_flights(req: FlightRequest):
+    """
+    Proxy endpoint to search for flights using the Flight Service.
+    """
     print(f"✈️ Searching flights: {req.origin} -> {req.to} on {req.date}")
     results = flight_service.search_flights(req.origin, req.to, req.date)
     if isinstance(results, dict) and "error" in results:
@@ -215,12 +284,18 @@ def get_flights(req: FlightRequest):
 
 @router.post("/analyze_budget")
 async def analyze_budget(req: BudgetRequest):
+    """
+    Utility to breakdown a budget string into categories using simple heuristics.
+    """
     print(f"💰 Analyzing budget: {req.budget}")
     try:
+        # Extract numeric value from string
         matches = re.findall(r"[-+]?\d*\.\d+|\d+", req.budget.replace(",", ""))
         total = float(matches[0]) if matches else 2000.0
-    except: total = 2000.0
+    except: 
+        total = 2000.0
 
+    # Randomize distribution slightly for realism
     f_share = 0.35 + random.uniform(-0.05, 0.05)
     h_share = 0.35 + random.uniform(-0.05, 0.05)
     fd_share = 0.20 + random.uniform(-0.03, 0.03)

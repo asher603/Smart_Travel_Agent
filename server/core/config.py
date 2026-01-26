@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     
     # Service URLs
     AI_SERVICE_URL: str = "http://localhost:8002"
-    DATA_SERVICE_URL: str = "http://localhost:8003"
+    DATA_SERVICE_URL: str = "http://localhost:8004"
 
     class Config:
         env_file = ".env"

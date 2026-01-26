@@ -51,6 +51,10 @@ class ProfileModel:
             # עדכון בשרת
             resp = self.api.post("/users/update", payload)
             
+            # --- הוספתי את השורה הזו לדיבאג ---
+            print(f"DEBUG: Server response for update: {resp}") 
+            # ----------------------------------
+
             if resp and resp.get("status") == "updated":
                 self.user_data["email"] = new_email
                 return True, "Email updated successfully"
@@ -58,6 +62,7 @@ class ProfileModel:
                 return False, "Failed to update email"
                 
         except Exception as e:
+            print(f"Error saving profile: {e}") # הדפסת שגיאה ברורה יותר
             return False, str(e)
 
     def change_password(self, old_pass, new_pass):

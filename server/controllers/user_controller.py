@@ -40,7 +40,18 @@ async def update_user_profile(req: ProfileUpdate):
                 json=req.dict(),
                 timeout=5.0
             )
-            return resp.json()
+            
+            # בדיקה אם הבקשה הפנימית הצליחה
+            if resp.status_code == 200:
+                # התיקון: אנחנו מחזירים בדיוק מה שהלקוח מצפה לו
+                return {"status": "updated", "data": resp.json()}
+            else:
+                # אם ה-Data Service החזיר שגיאה
+                print(f"Data Service failed: {resp.text}")
+                raise HTTPException(status_code=resp.status_code, detail="Update failed in data service")
+
+        except HTTPException as he:
+            raise he
         except Exception as e:
             print(f"Error updating profile: {e}")
             raise HTTPException(status_code=500, detail="Update failed")

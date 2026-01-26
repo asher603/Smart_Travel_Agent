@@ -10,6 +10,17 @@ class DashboardPresenter:
         self.view.history_requested.connect(self.on_history)
         self.view.profile_requested.connect(self.on_profile)
 
+        # --- תיקון: הקשבה לאירוע התחברות ---
+        # ברגע שיש לוגין מוצלח, המודל שלנו יקבל את שם המשתמש האמיתי
+        self.bus.subscribe("login_success", self.on_user_login)
+
+    def on_user_login(self, data):
+        """פונקציה שמופעלת אוטומטית כשיש אירוע login_success"""
+        username = data.get("username")
+        if username:
+            # עדכון המודל והתצוגה עם השם האמיתי
+            self.set_user(username)
+
     def set_user(self, username):
         """Called by the Shell/Main to update the dashboard before showing it"""
         self.model.username = username

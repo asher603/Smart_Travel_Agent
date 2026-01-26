@@ -28,6 +28,11 @@ def register(user: UserAuth):
         "password": hashed,
         "created_at": datetime.utcnow()
     })
+    
+    # --- DEBUG PRINT ---
+    print(f"✅ DEBUG: Registered new user: '{user.username}'")
+    # -------------------
+    
     return {"status": "created"}
 
 @router.post("/verify")
@@ -38,6 +43,7 @@ def verify(user: UserAuth):
     # Find user
     doc = users_col.find_one({"username": user.username})
     if not doc:
+        print(f"❌ DEBUG: Verify failed - User '{user.username}' not found in DB")
         raise HTTPException(status_code=401, detail="Invalid credentials")
     
     # Check password hash
@@ -46,8 +52,10 @@ def verify(user: UserAuth):
         stored_pass = stored_pass.encode('utf-8')
 
     if bcrypt.checkpw(user.password.encode('utf-8'), stored_pass):
+        print(f"✅ DEBUG: User '{user.username}' verified successfully")
         return {"status": "valid"}
     
+    print(f"❌ DEBUG: Verify failed - Password mismatch for '{user.username}'")
     raise HTTPException(status_code=401, detail="Invalid credentials")
 
 class UserProfileRequest(BaseModel):
@@ -60,7 +68,7 @@ def get_profile(req: UserProfileRequest):
     user = db["users"].find_one({"username": req.username}, {"_id": 0, "password": 0})
     
     if not user:
-        # אם המשתמש לא נמצא (נדיר), נחזיר מבנה ריק תקין
+        print(f"⚠️ DEBUG: get_profile - User '{req.username}' NOT found, returning empty default")
         return {"username": req.username, "preferences": {}}
     
     return user
@@ -74,6 +82,18 @@ class UserProfileUpdate(BaseModel):
 def update_profile(data: UserProfileUpdate):
     db = get_db()
     
+    # --- DEBUG PRINTS (Start) ---
+    print(f"🔍 DEBUG: Attempting to update user: '{data.username}'")
+    print(f"📦 DEBUG: Update payload: {data.dict()}")
+    
+    # בדיקה מקדימה - האם המשתמש בכלל קיים?
+    check_user = db["users"].find_one({"username": data.username})
+    if check_user:
+        print(f"✅ DEBUG: User '{data.username}' FOUND in DB. ID: {check_user.get('_id')}")
+    else:
+        print(f"❌ DEBUG: User '{data.username}' does NOT exist in DB!")
+    # ----------------------------
+
     # בניית אובייקט העדכון דינמית (רק שדות שנשלחו)
     update_fields = {}
     if data.email is not None:
@@ -82,6 +102,7 @@ def update_profile(data: UserProfileUpdate):
         update_fields["preferences"] = data.preferences
 
     if not update_fields:
+        print("⚠️ DEBUG: No fields to update")
         return {"status": "no_change"}
 
     result = db["users"].update_one(
@@ -89,8 +110,11 @@ def update_profile(data: UserProfileUpdate):
         {"$set": update_fields}
     )
     
-    # --- תיקון: החזרת שגיאה אם המשתמש לא נמצא ---
+    # --- DEBUG PRINTS (Result) ---
+    print(f"🛠️ DEBUG: Mongo Update Result - Matched: {result.matched_count}, Modified: {result.modified_count}")
+    
     if result.matched_count == 0:
+        print(f"❌ DEBUG: Update failed because matched_count is 0")
         raise HTTPException(status_code=404, detail=f"User {data.username} not found")
     
     return {"status": "updated"}
