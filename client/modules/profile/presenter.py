@@ -9,7 +9,7 @@ class DataWorker(QThread):
         self.model = model
 
     def run(self):
-        # המודל ייגש לשרת (פעולה איטית) ויחזיר את הנתונים
+        # Model accesses server (slow operation) and returns data
         data = self.model.fetch_user_data()
         self.finished.emit(data)
 
@@ -31,29 +31,29 @@ class ProfilePresenter(QObject):
         self.bus.subscribe("login_success", self.on_user_login)
 
     def on_user_login(self, data):
-        """שומרים את שם המשתמש מיד כשהוא מתחבר"""
+        """Store username immediately when user logs in"""
         username = data.get("username")
         if username:
             self.model.set_current_user(username)
 
     def load_profile(self, data):
-        """נקרא כשהמשתמש נכנס למסך הפרופיל"""
-        # 1. Optimistic Update: מציגים מיד את מה שיש לנו בזיכרון (שם משתמש)
-        # כדי שהמשתמש לא יראה "Guest" עד שהשרת יענה
+        """Called when user navigates to profile screen"""
+        # 1. Optimistic Update: Show what we have in memory immediately (username)
+        # So user doesn't see "Guest" until server responds
         initial_data = {
             "username": self.model.current_username or "Guest",
             "email": self.model.user_data.get("email", "")
         }
         self.view.update_view(initial_data)
 
-        # 2. Background Fetch: שולחים בקשה לשרת להביא נתונים עדכניים ומלאים
+        # 2. Background Fetch: Send request to server for fresh, complete data
         if self.model.current_username:
             self.worker = DataWorker(self.model)
             self.worker.finished.connect(self.on_data_ready)
             self.worker.start()
 
     def on_data_ready(self, full_data):
-        """המידע חזר מהשרת - מעדכנים את המסך סופית"""
+        """Data returned from server - final screen update"""
         self.view.update_view(full_data)
 
     def on_save_identity(self, data):
@@ -88,14 +88,14 @@ class ProfilePresenter(QObject):
         self.bus.publish("NAVIGATE", {"index": 1})
 
     def check_navigation(self, data):
-        # בודק אם הניווט הוא למסך הפרופיל (אינדקס 5)
+        # Check if navigation is to profile screen (index 5)
         if data.get("index") == 5:
-            # לוקח את שם המשתמש מהאירוע ומעדכן את המודל
+            # Get username from event and update model
             username = data.get("username")
             if username:
                 self.model.set_current_user(username)
             
-            # מפעיל את טעינת המסך
+            # Trigger screen loading
             self.load_profile(data)
         
     def on_logout(self): 

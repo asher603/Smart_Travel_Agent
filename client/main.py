@@ -73,7 +73,7 @@ def main():
 
     # Index 5: Profile
     profile_view = ProfileView()
-    # חשוב: אנחנו מזריקים את ה-api_service למודל
+    # Important: Inject api_service into the model
     profile_model = ProfileModel(api_service) 
     profile_presenter = ProfilePresenter(profile_view, profile_model, event_bus)
     shell.register_module(5, profile_view)

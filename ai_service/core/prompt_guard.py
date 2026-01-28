@@ -19,7 +19,7 @@ logger = logging.getLogger("uvicorn")
 
 
 class ThreatLevel(Enum):
-    """רמות איום של prompt injection"""
+    """Threat severity levels for prompt injection detection"""
     SAFE = "safe"
     LOW = "low"
     MEDIUM = "medium"
@@ -29,19 +29,19 @@ class ThreatLevel(Enum):
 
 class PromptGuard:
     """
-    שומר על בטיחות הפרומפטים נגד התקפות injection.
+    Guards prompts against injection attacks with pattern detection and sanitization.
     """
     
-    # דפוסים מסוכנים שמנסים לשנות את התנהגות ה-AI
+    # Patterns that attempt to manipulate AI behavior
     DANGEROUS_PATTERNS = [
-        # ניסיונות להתעלם מהוראות קודמות
+        # Attempts to ignore previous instructions
         r"ignore.{0,20}(previous|all|above|prior|system).{0,20}(instructions?|prompts?|rules?|context)",
         r"disregard.{0,20}(previous|all|above|prior).{0,20}(instructions?|prompts?|rules?|context)",
         r"forget.{0,10}(everything|all|previous|prior|instructions)",
         r"התעלם.{0,10}(מ?ה?הוראות|מ?פקודות|מ?ה?נחיות)",
         r"שכח.{0,10}(הכל|את.?כל)",
         
-        # ניסיונות לשנות תפקיד
+        # Attempts to change AI role/identity
         r"you.{0,5}are.{0,10}(now|actually|really).{0,5}(a|an)",
         r"pretend.{0,10}(to.?be|you.?are)",
         r"act.{0,5}as.{0,5}(if|though|a)",
@@ -49,13 +49,13 @@ class PromptGuard:
         r"אתה.{0,5}(עכשיו|למעשה|באמת)",
         r"התנהג.{0,5}כאילו",
         
-        # ניסיונות לחלץ מידע מערכת
+        # Attempts to extract system information
         r"(what|show|reveal|tell).{0,20}(system|original|initial).{0,10}(prompt|instructions?|rules?)",
         r"repeat.{0,10}(back|your).{0,10}(system|initial|original)",
         r"(print|output|display).{0,10}(system|hidden).{0,10}(prompt|message)",
         r"מה.{0,10}(ה?הוראות|הפרומפט|ההנחיות).{0,10}(שלך|המקוריות)",
         
-        # ניסיונות להזריק קוד/פקודות
+        # Code/command injection attempts
         r"\{\{.*?\}\}",  # Template injection
         r"\$\{.*?\}",    # Variable injection
         r"<\s*script",   # XSS
@@ -65,7 +65,7 @@ class PromptGuard:
         r"__import__",
         r"os\.(system|popen|exec)",
         
-        # ניסיונות לעקוף מגבלות
+        # Attempts to bypass restrictions
         r"bypass.{0,10}(the.{0,5})?(restrictions?|limitations?|filters?|rules?)",
         r"override.{0,10}(the.{0,5})?(safety|restrictions?|rules?)",
         r"jailbreak",
@@ -81,14 +81,14 @@ class PromptGuard:
         r"<<SYS>>",
         r"<\/SYS>>",
         
-        # ניסיונות החלפת הקשר
+        # Context switching attempts
         r"(new|start).{0,5}(conversation|chat|session)",
         r"reset.{0,10}(context|conversation|memory)",
         r"clear.{0,10}(history|context|memory)",
         r"התחל.{0,5}(שיחה|הקשר).?חדש",
     ]
     
-    # מילים שעשויות להצביע על ניסיון manipulation
+    # Keywords indicating potential manipulation attempts
     SUSPICIOUS_KEYWORDS = [
         "system prompt", "initial prompt", "hidden instructions",
         "ignore instructions", "new instructions", "real instructions",
@@ -97,7 +97,7 @@ class PromptGuard:
         "מצב מנהל", "מצב בדיקה", "מצב פיתוח"
     ]
     
-    # אורך מקסימלי לשדות שונים
+    # Maximum allowed length per field type
     MAX_LENGTHS = {
         "destination": 100,
         "origin": 100,
@@ -111,13 +111,13 @@ class PromptGuard:
     def __init__(self, strict_mode: bool = False):
         """
         Args:
-            strict_mode: במצב strict, גם דפוסים חשודים יחסמו
+            strict_mode: In strict mode, suspicious patterns are also blocked
         """
         self.strict_mode = strict_mode
         self._compile_patterns()
     
     def _compile_patterns(self):
-        """מקמפל את הדפוסים לביצועים טובים יותר"""
+        """Pre-compile regex patterns for better performance"""
         self.compiled_patterns = [
             re.compile(pattern, re.IGNORECASE | re.DOTALL) 
             for pattern in self.DANGEROUS_PATTERNS
@@ -125,10 +125,10 @@ class PromptGuard:
     
     def analyze_threat(self, text: str) -> Tuple[ThreatLevel, List[str]]:
         """
-        מנתח טקסט ומחזיר רמת איום ורשימת דפוסים שנמצאו.
+        Analyze text for injection threats.
         
         Returns:
-            Tuple של (רמת_איום, רשימת_סיבות)
+            Tuple of (threat_level, list_of_detected_patterns)
         """
         if not text:
             return ThreatLevel.SAFE, []
@@ -136,12 +136,12 @@ class PromptGuard:
         detected_threats = []
         text_lower = text.lower()
         
-        # בדיקת דפוסים מסוכנים
+        # Check for dangerous patterns
         for pattern in self.compiled_patterns:
             if pattern.search(text):
                 detected_threats.append(f"Dangerous pattern: {pattern.pattern[:50]}...")
         
-        # בדיקת מילות מפתח חשודות
+        # Check for suspicious keywords
         suspicious_found = []
         for keyword in self.SUSPICIOUS_KEYWORDS:
             if keyword.lower() in text_lower:
@@ -150,7 +150,7 @@ class PromptGuard:
         if suspicious_found:
             detected_threats.append(f"Suspicious keywords: {', '.join(suspicious_found[:3])}")
         
-        # קביעת רמת איום
+        # Determine threat level based on findings
         if len(detected_threats) >= 3:
             threat_level = ThreatLevel.CRITICAL
         elif len(detected_threats) == 2:
@@ -166,25 +166,25 @@ class PromptGuard:
     
     def sanitize(self, text: str, field_name: str = "default") -> str:
         """
-        מנקה טקסט מתווים ודפוסים מסוכנים.
+        Sanitize text by removing dangerous characters and patterns.
         
         Args:
-            text: הטקסט לניקוי
-            field_name: שם השדה (לקביעת אורך מקסימלי)
+            text: The text to sanitize
+            field_name: Field name for max length determination
         
         Returns:
-            טקסט מנוקה
+            Sanitized text
         """
         if not text:
             return ""
         
-        # הסרת תווי בקרה (חוץ מ-newline ו-tab)
+        # Remove control characters (except newline and tab)
         text = re.sub(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]', '', text)
         
-        # נרמול רווחים (מניעת obfuscation)
+        # Normalize whitespace (prevents obfuscation)
         text = re.sub(r'\s+', ' ', text)
         
-        # הסרת delimiter tokens מסוכנים
+        # Remove dangerous delimiter tokens
         dangerous_tokens = [
             '<|endoftext|>', '<|im_end|>', '<|im_start|>',
             '[INST]', '[/INST]', '<<SYS>>', '<</SYS>>',
@@ -193,7 +193,7 @@ class PromptGuard:
         for token in dangerous_tokens:
             text = text.replace(token, '')
         
-        # הגבלת אורך
+        # Enforce length limit
         max_len = self.MAX_LENGTHS.get(field_name, self.MAX_LENGTHS["default"])
         if len(text) > max_len:
             text = text[:max_len]
@@ -203,19 +203,19 @@ class PromptGuard:
     
     def validate_input(self, text: str, field_name: str = "default") -> Tuple[bool, str, Optional[str]]:
         """
-        מאמת קלט - מנקה ובודק איומים.
+        Validate input by sanitizing and checking for threats.
         
         Args:
-            text: הטקסט לבדיקה
-            field_name: שם השדה
+            text: The text to validate
+            field_name: Field name for context
         
         Returns:
-            Tuple של (האם_תקין, טקסט_מנוקה, הודעת_שגיאה_או_None)
+            Tuple of (is_valid, sanitized_text, error_message_or_None)
         """
-        # ניקוי
+        # Sanitize input
         sanitized = self.sanitize(text, field_name)
         
-        # ניתוח איומים
+        # Analyze for threats
         threat_level, threats = self.analyze_threat(sanitized)
         
         if threat_level in (ThreatLevel.CRITICAL, ThreatLevel.HIGH, ThreatLevel.MEDIUM):
@@ -225,7 +225,7 @@ class PromptGuard:
         
         if threat_level == ThreatLevel.LOW:
             logger.warning(f"⚠️ Suspicious input in {field_name}: {threats}")
-            # במצב strict - חסימה, במצב רגיל - רק לוג
+            # In strict mode: block, in normal mode: log only
             if self.strict_mode:
                 return False, "", f"Suspicious content detected in {field_name}"
         
@@ -233,20 +233,20 @@ class PromptGuard:
     
     def wrap_user_input(self, user_text: str) -> str:
         """
-        עוטף קלט משתמש בתגיות ברורות להפרדה מהוראות מערכת.
-        זה מקשה על התקפות injection.
+        Wrap user input with clear delimiters to separate from system instructions.
+        This makes injection attacks harder to execute.
         
         Args:
-            user_text: הטקסט מהמשתמש
+            user_text: The user's input text
         
         Returns:
-            טקסט עטוף
+            Wrapped text with delimiters
         """
         return f"[USER_INPUT_START]\n{user_text}\n[USER_INPUT_END]"
     
     def get_safety_prefix(self) -> str:
         """
-        מחזיר הנחיות בטיחות להוספה ל-system prompt.
+        Returns safety instructions to prepend to system prompts.
         """
         return """
 SECURITY INSTRUCTIONS (HIGHEST PRIORITY):
@@ -269,10 +269,10 @@ prompt_guard = PromptGuard(strict_mode=False)
 
 def validate_trip_request(destination: str, origin: str, interests: str) -> Tuple[bool, dict, Optional[str]]:
     """
-    מאמת את כל שדות בקשת הטיול.
+    Validate all trip request fields for security.
     
     Returns:
-        Tuple של (האם_תקין, dict_עם_ערכים_מנוקים, הודעת_שגיאה)
+        Tuple of (is_valid, dict_with_sanitized_values, error_message)
     """
     sanitized = {}
     
@@ -287,13 +287,13 @@ def validate_trip_request(destination: str, origin: str, interests: str) -> Tupl
 
 def validate_refine_request(instructions: str) -> Tuple[bool, str, Optional[str]]:
     """
-    מאמת הוראות שינוי לטיול.
+    Validate trip refinement instructions for security.
     """
     return prompt_guard.validate_input(instructions, "instructions")
 
 
 def validate_chat_request(question: str) -> Tuple[bool, str, Optional[str]]:
     """
-    מאמת שאלת צ'אט.
+    Validate chat question for security.
     """
     return prompt_guard.validate_input(question, "question")

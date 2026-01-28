@@ -252,15 +252,15 @@ class AuthView(QWidget):
         self.btn_reg_action.setEnabled(True)
 
     def reset_form(self):
-        """איפוס כל הטופס - נקרא כשחוזרים למסך אחרי logout"""
-        # איפוס שדות הטקסט
+        """Reset entire form - called when returning to screen after logout"""
+        # Reset text fields
         self.l_user.setText("")
         self.l_pass.setText("")
         self.r_user.setText("")
         self.r_pass.setText("")
         
-        # איפוס כפתורים
+        # Reset buttons
         self._reset_buttons()
         
-        # חזרה לטאב login
+        # Return to login tab
         self.switch_to_login()

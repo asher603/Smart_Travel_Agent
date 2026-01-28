@@ -18,7 +18,7 @@ class ProfileUpdate(BaseModel):
 async def get_user_profile(req: ProfileRequest):
     async with httpx.AsyncClient() as client:
         try:
-            # הפניה ל-Data Service בפורט 8003/4
+            # Forward request to Data Service
             resp = await client.post(
                 f"{settings.DATA_SERVICE_URL}/users/get_profile",
                 json=req.dict(),
@@ -41,12 +41,12 @@ async def update_user_profile(req: ProfileUpdate):
                 timeout=5.0
             )
             
-            # בדיקה אם הבקשה הפנימית הצליחה
+            # Verify internal request succeeded
             if resp.status_code == 200:
-                # התיקון: אנחנו מחזירים בדיוק מה שהלקוח מצפה לו
+                # Return expected client response format
                 return {"status": "updated", "data": resp.json()}
             else:
-                # אם ה-Data Service החזיר שגיאה
+                # Handle Data Service error
                 print(f"Data Service failed: {resp.text}")
                 raise HTTPException(status_code=resp.status_code, detail="Update failed in data service")
 
@@ -56,13 +56,13 @@ async def update_user_profile(req: ProfileUpdate):
             print(f"Error updating profile: {e}")
             raise HTTPException(status_code=500, detail="Update failed")
 
-# הוסף את המודל הזה
+# Password change request model
 class PasswordUpdate(BaseModel):
     username: str
     old_password: str
     new_password: str
 
-# הוסף את ה-Endpoint הזה
+# Password change endpoint
 @router.post("/change_password")
 async def change_password(req: PasswordUpdate):
     async with httpx.AsyncClient() as client:

@@ -9,23 +9,22 @@ import uuid
 router = APIRouter()
 store = EventStore()
 
-# --- מודל חדש לעדכון המצב ---
+# State update model for chat history
 class StateUpdate(BaseModel):
     chat_history: List[Dict[str, Any]]
 
-# --- WRITE (Commands) ---
+# --- WRITE OPERATIONS (Commands) ---
 
 @router.post("/events/create_trip")
 def create_trip(payload: dict):
-    # --- התיקון: שימוש במזהה שהגיע מהשרת במקום לייצר חדש ---
-    # אם השרת שלח trip_id, נשתמש בו. אחרת, נייצר אחד לגיבוי.
+    # Use server-provided trip_id if available, otherwise generate new
     trip_id = payload.get("trip_id") or str(uuid.uuid4())
     
     event = TripCreated(
-        trip_id=trip_id, # משתמשים ב-ID הזה
+        trip_id=trip_id,
         username=payload["username"],
         destination=payload["destination"],
-        initial_request=payload.get("initial_request", payload) # טיפול בטוח אם חסר
+        initial_request=payload.get("initial_request", payload)
     )
     store.append(event)
     return {"trip_id": trip_id}
@@ -39,18 +38,18 @@ def add_plan(payload: dict):
     store.append(event)
     return {"status": "Plan saved"}
 
-# --- READ (Queries) ---
+# --- READ OPERATIONS (Queries) ---
 
 @router.get("/trips/{trip_id}")
 def get_trip_state(trip_id: str):
-    # כאן אנחנו משנים גישה: במקום לנגן אירועים (Event Sourcing)
-    # אנחנו קוראים ישירות מה-Snapshot, כי שם הצ'אט נשמר כרגע.
+    # Read directly from snapshot (stores chat history)
+    # Using snapshot instead of event replay for efficiency
     
     trip = store.snapshots.find_one({"trip_id": trip_id})
     if not trip:
         raise HTTPException(status_code=404, detail="Trip not found")
     
-    # המרת ה-_id של מונגו למחרוזת
+    # Convert MongoDB _id to string
     if "_id" in trip:
         trip["_id"] = str(trip["_id"])
         
@@ -70,7 +69,7 @@ def get_user_summary(username: str):
         })
     return results
 
-# --- התיקון הגדול: Endpoint לעדכון ישיר ---
+# Direct state update endpoint
 @router.put("/trips/{trip_id}/state")
 def update_trip_state(trip_id: str, payload: StateUpdate):
     """

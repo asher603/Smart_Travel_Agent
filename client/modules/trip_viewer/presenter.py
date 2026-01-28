@@ -19,17 +19,17 @@ class TripViewerPresenter(QObject):
     def on_trip_loaded(self, data):
         print(f"👀 Viewer Loaded: {data.get('destination')}")
         
-        # --- התיקון: חילוץ ושמירת ה-ID במודל לפני הכל ---
-        # מזהה שמגיע מההיסטוריה (id) או מיצירה חדשה (trip_id)
+        # Extract and store the trip ID in the model first
+        # ID may come from history (id) or new creation (trip_id)
         current_id = data.get("id") or data.get("trip_id") or data.get("_id")
         
         if current_id:
-            self.model.trip_id = str(current_id)  # שמירה במודל כדי שהשמירה תעבוד אחר כך!
+            self.model.trip_id = str(current_id)  # Store in model for later saves
         
-        # לוגיקת הטעינה
+        # Loading logic
         if "id" in data or "_id" in data:
             self.view.load_existing_trip(data)
-            # אם יש היסטוריה במידע שהגיע, נעדכן את ה-View ידנית כדי שיהיה מסונכרן
+            # If history data was provided, update the View manually to keep in sync
             if "chat_history" in data:
                 self.view.chat_history_state = data["chat_history"]
         else:
@@ -39,21 +39,21 @@ class TripViewerPresenter(QObject):
         self.bus.publish("NAVIGATE", {"index": 1})
 
     def save_chat_state(self, chat_history):
-        """שולח את ההיסטוריה לשרת לעדכון"""
-        # וודא שיש לנו מזהה טיול
+        """Send chat history to server for update"""
+        # Ensure we have a trip ID
         trip_id = self.model.trip_id
         if not trip_id:
             return
 
         print(f"💾 Syncing chat state for trip {trip_id}...")
         
-        # אנחנו משתמשים ב-api_service כדי לשלוח ברקע
-        # אם אין לך post_bg, תשתמש ב-start_worker עם Worker ייעודי
-        # אבל לפי הקוד שלך ב-Workers, יש לך StateSaverWorker. אז נשתמש בו.
+        # Use api_service to send in background
+        # If post_bg is unavailable, use start_worker with a dedicated Worker
+        # Based on your code in Workers, you have StateSaverWorker, so we use that
         
         from .workers import StateSaverWorker
         worker = StateSaverWorker(self.service, trip_id, chat_history)
         worker.start()
-        # חשוב: אנחנו לא מחברים finished_signal כי זה Fire & Forget
-        # אבל צריך לשמור רפרנס כדי שה-GC לא יהרוג אותו, אז:
+        # Note: Not connecting finished_signal since this is Fire & Forget
+        # But we need to keep a reference so GC doesn't kill it:
         self.view.start_worker(worker)

@@ -64,7 +64,7 @@ class UserProfileRequest(BaseModel):
 @router.post("/get_profile")
 def get_profile(req: UserProfileRequest):
     db = get_db()
-    # שליפת המשתמש ללא הסיסמה וה-ID הפנימי
+    # Retrieve user excluding password and internal _id
     user = db["users"].find_one({"username": req.username}, {"_id": 0, "password": 0})
     
     if not user:
@@ -82,19 +82,18 @@ class UserProfileUpdate(BaseModel):
 def update_profile(data: UserProfileUpdate):
     db = get_db()
     
-    # --- DEBUG PRINTS (Start) ---
+    # --- DEBUG LOGGING ---
     print(f"🔍 DEBUG: Attempting to update user: '{data.username}'")
     print(f"📦 DEBUG: Update payload: {data.dict()}")
     
-    # בדיקה מקדימה - האם המשתמש בכלל קיים?
+    # Pre-check: Verify user exists
     check_user = db["users"].find_one({"username": data.username})
     if check_user:
         print(f"✅ DEBUG: User '{data.username}' FOUND in DB. ID: {check_user.get('_id')}")
     else:
         print(f"❌ DEBUG: User '{data.username}' does NOT exist in DB!")
-    # ----------------------------
 
-    # בניית אובייקט העדכון דינמית (רק שדות שנשלחו)
+    # Build update object dynamically (only include provided fields)
     update_fields = {}
     if data.email is not None:
         update_fields["email"] = data.email
@@ -119,7 +118,7 @@ def update_profile(data: UserProfileUpdate):
     
     return {"status": "updated"}
 
-# מחלקה לקבלת הנתונים
+# Password update request model
 class UserPasswordUpdate(BaseModel):
     username: str
     old_password: str
@@ -130,12 +129,12 @@ def change_user_password(data: UserPasswordUpdate):
     db = get_db()
     users_col = db["users"]
     
-    # 1. שליפת המשתמש
+    # 1. Retrieve user
     user = users_col.find_one({"username": data.username})
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # 2. אימות הסיסמה הישנה
+    # 2. Verify old password
     stored_pass = user["password"]
     if isinstance(stored_pass, str):
         stored_pass = stored_pass.encode('utf-8')
@@ -143,7 +142,7 @@ def change_user_password(data: UserPasswordUpdate):
     if not bcrypt.checkpw(data.old_password.encode('utf-8'), stored_pass):
         raise HTTPException(status_code=401, detail="Incorrect old password")
     
-    # 3. הצפנת הסיסמה החדשה ושמירה
+    # 3. Hash and save new password
     new_hashed = bcrypt.hashpw(data.new_password.encode('utf-8'), bcrypt.gensalt())
     
     users_col.update_one(

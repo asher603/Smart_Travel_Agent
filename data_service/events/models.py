@@ -4,9 +4,9 @@ from datetime import datetime
 import uuid
 
 class BaseEvent(BaseModel):
-    # התיקון: שימוש ב-default_factory מבטיח מזהה ייחודי לכל אירוע מחדש
+    # Using default_factory ensures unique ID for each event instance
     event_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    # כנ"ל לגבי הזמן - שיהיה מדויק לרגע היצירה ולא לרגע עליית השרת
+    # Timestamp captures exact creation time, not server startup time
     timestamp: datetime = Field(default_factory=datetime.utcnow)
     event_type: str
 

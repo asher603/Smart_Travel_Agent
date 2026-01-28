@@ -14,7 +14,7 @@ class HistoryPresenter(QObject):
         self.view.trip_deleted.connect(self.delete_trip)
         
         self.bus.subscribe("login_success", self.on_login)
-        # --- שורה חדשה: הרשמה לאירוע יצירת טיול ---
+        # Subscribe to trip creation event for auto-refresh
         self.bus.subscribe("TRIP_CREATED", self.on_trip_created)
 
     def on_login(self, data):
@@ -22,9 +22,9 @@ class HistoryPresenter(QObject):
         # Trigger refresh immediately on login
         self.refresh()
 
-    # --- פונקציה חדשה: מטפלת ברענון כשנוצר טיול ---
+    # Handler for trip creation - triggers history refresh
     def on_trip_created(self, _):
-        # המקף התחתון (_) מסמן שאנחנו מתעלמים מהמידע שמגיע עם האירוע
+        # Underscore (_) indicates we ignore the event data
         print("✨ New trip created. Refreshing history list...")
         self.refresh()
     # ---------------------------------------------

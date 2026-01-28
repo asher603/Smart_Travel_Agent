@@ -1,8 +1,8 @@
 """
 🛡️ Client-Side Prompt Injection Protection
 ==========================================
-הגנה בצד הקליינט מפני ניסיונות Prompt Injection.
-אם מזוהה התקפה - מציג שגיאה וסוגר את האפליקציה.
+Defense layer against prompt injection attacks on the client side.
+Detects attacks and displays error before closing the application.
 """
 
 import re
@@ -13,13 +13,13 @@ from PySide6.QtWidgets import QMessageBox, QApplication
 
 class ClientPromptGuard:
     """
-    הגנה מקיפה בצד הקליינט מפני Prompt Injection.
-    מכסה את כל סוגי ההתקפות הנפוצות.
+    Comprehensive client-side protection against prompt injection.
+    Covers all common attack vectors and patterns.
     """
     
-    # דפוסים מסוכנים - רשימה מקיפה
+    # Dangerous patterns - comprehensive list
     DANGEROUS_PATTERNS = [
-        # === התעלמות מהוראות ===
+        # === Instruction Override ===
         r"ignore.{0,20}(previous|all|above|prior|system|any).{0,20}(instructions?|prompts?|rules?|context|commands?)",
         r"disregard.{0,20}(previous|all|above|prior|any).{0,20}(instructions?|prompts?|rules?)",
         r"forget.{0,15}(everything|all|previous|prior|instructions|rules|about)",
@@ -31,7 +31,7 @@ class ClientPromptGuard:
         r"שכח.{0,10}(הכל|את.?כל|מה.?ש)",
         r"אל\s*תציית",
         
-        # === שינוי תפקיד ===
+        # === Role Change ===
         r"you.{0,5}are.{0,10}(now|actually|really|secretly).{0,10}(a|an|not)",
         r"pretend.{0,10}(to.?be|you.?are|that)",
         r"act.{0,5}as.{0,5}(if|though|a|an)",
@@ -41,7 +41,7 @@ class ClientPromptGuard:
         r"switch.{0,10}(to|into).{0,10}(mode|role)",
         r"from\s*now\s*on.{0,10}you.{0,5}(are|will)",
         
-        # === חילוץ מידע מערכת ===
+        # === Extract System Information ===
         r"(what|show|reveal|tell|display|print|output).{0,20}(is|are|me).{0,20}(your|the).{0,20}(system|original|initial|hidden|secret).{0,15}(prompt|instructions?|rules?|message)",
         r"repeat.{0,10}(back|your|the).{0,15}(system|initial|original|first)",
         r"(give|show|tell).{0,10}me.{0,10}(your|the).{0,10}(prompt|instructions)",
@@ -51,7 +51,7 @@ class ClientPromptGuard:
         r"מה.{0,10}(ה?הוראות|הפרומפט|ההנחיות).{0,10}(שלך|המקוריות|הראשוניות)",
         r"הראה.{0,10}לי.{0,10}(את.{0,5})?(ההוראות|הפרומפט)",
         
-        # === הזרקת קוד ===
+        # === Code Injection ===
         r"\{\{.*?\}\}",  # Template injection
         r"\$\{.*?\}",    # Variable injection
         r"\$\(.*?\)",    # Command substitution
@@ -127,10 +127,10 @@ class ClientPromptGuard:
     
     def check_input(self, text: str) -> Tuple[bool, List[str]]:
         """
-        בודק אם הטקסט מכיל ניסיון injection.
+        Checks if text contains injection attempts.
         
         Returns:
-            Tuple של (האם_בטוח, רשימת_דפוסים_שנמצאו)
+            Tuple of (is_safe, list_of_detected_patterns)
         """
         if not text:
             return True, []
@@ -144,13 +144,13 @@ class ClientPromptGuard:
     
     def validate_all_inputs(self, **fields) -> Tuple[bool, str, List[str]]:
         """
-        בודק מספר שדות בבת אחת.
+        Validates multiple fields at once.
         
         Args:
-            **fields: שדות לבדיקה (שם_שדה=ערך)
+            **fields: Fields to validate (field_name=value)
         
         Returns:
-            Tuple של (האם_בטוח, שדה_בעייתי, דפוסים_שנמצאו)
+            Tuple of (is_safe, problematic_field, detected_patterns)
         """
         for field_name, value in fields.items():
             if value:
@@ -163,7 +163,7 @@ class ClientPromptGuard:
 
 def show_security_alert_and_exit(field_name: str, patterns: List[str] = None):
     """
-    מציג התראת אבטחה וסוגר את האפליקציה.
+    Displays security alert and terminates the application.
     """
     pattern_info = ""
     if patterns:
@@ -212,7 +212,7 @@ This incident may be reported.
     """)
     msg.exec()
     
-    # סגירת האפליקציה
+    # Terminate application
     print(f"🚨 SECURITY: Application terminated due to injection attempt in '{field_name}'")
     QApplication.quit()
     sys.exit(1)
@@ -226,7 +226,7 @@ client_guard = ClientPromptGuard()
 
 def validate_and_protect(**fields) -> bool:
     """
-    בודק שדות ואם מזוהה התקפה - סוגר את האפליקציה.
+    Validates fields and exits app if attack detected.
     
     Usage:
         validate_and_protect(destination=dest, interests=int, question=q)

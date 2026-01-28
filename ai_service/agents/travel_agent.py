@@ -28,9 +28,11 @@ from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineReques
 logger = logging.getLogger("uvicorn")
 
 class TravelAgent:
+    """AI-powered travel planning agent with LLM integration."""
+    
     def __init__(self):
         self.manager = llm_manager
-        # כתובת ה-MCP בתוך הדוקר
+        # MCP server endpoint (Docker internal network)
         self.mcp_url = "http://mcp-server:8000/sse"
 
     async def answer_question(self, req: ChatRequest) -> Dict[str, str]:
@@ -192,8 +194,8 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
 
             result["analyzed_vibe"] = analyzed_vibe
 
-            # --- n8n Automation ---
-            # אנחנו מפעילים את זה ברקע (Fire and Forget) כדי לא לעכב את התשובה למשתמש
+            # --- n8n Automation (Fire & Forget) ---
+            # Run in background to avoid blocking response
             if result and "itinerary" in result:
                 asyncio.create_task(self._trigger_automation(result, req))
 
@@ -209,26 +211,25 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
             }
 
     async def _trigger_automation(self, trip_data: dict, req: TripRequest):
-        """שולח את פרטי הטיול ל-n8n בצורה שקטה"""
+        """Silently sends trip data to n8n webhook for email automation."""
         print(f"DEBUG: Attempting to send data to n8n at {settings.N8N_WEBHOOK_URL}")
         try:
-            # חישוב תאריכים דינמי (מתחילים מהיום)
+            # Calculate dynamic dates starting from today
             start_date_obj = datetime.now()
             end_date_obj = start_date_obj + timedelta(days=req.duration)
             
-            # שליפת המייל (אם קיים בבקשה, אחרת דיפולטיבי)
-            # אם תוסיף שדה email ל-TripRequest בעתיד, שנה את זה ל-req.email
+            # Extract email from request (fallback to default)
             user_email = req.email if req.email else "user@example.com"
             payload = {
                 "email": user_email,
-                "summary": f"Trip to {req.destination}: {trip_data.get('summary', '')[:200]}...", # תקציר למייל
-                "full_itinerary": str(trip_data.get("itinerary", [])), # המידע המלא
+                "summary": f"Trip to {req.destination}: {trip_data.get('summary', '')[:200]}...",
+                "full_itinerary": str(trip_data.get("itinerary", [])),
                 "start_date": start_date_obj.strftime("%Y-%m-%d"),
                 "end_date": end_date_obj.strftime("%Y-%m-%d")
             }
             
             async with httpx.AsyncClient() as client:
-                # Timeout קצר כדי לא להיתקע אם n8n למטה
+                # Short timeout to prevent hanging if n8n is down
                 resp = await client.post(settings.N8N_WEBHOOK_URL, json=payload, timeout=3.0)
                 print(f"DEBUG: n8n response status: {resp.status_code}")
                 
@@ -237,8 +238,8 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
 
     def _clean_json_string(self, json_str: str) -> str:
         """
-        מנקה את המחרוזת מסימני Markdown כמו ```json
-        כדי למנוע קריסות של הפארסר.
+        Strips Markdown code fences (```json) from AI responses
+        to prevent JSON parser failures.
         """
         pattern = r"```json(.*?)```"
         match = re.search(pattern, json_str, re.DOTALL)

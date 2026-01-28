@@ -3,29 +3,29 @@ import json
 class ProfileModel:
     def __init__(self, api_service):
         self.api = api_service
-        self.current_username = None # שומרים כאן את מי שמחובר כרגע
+        self.current_username = None  # Store currently logged in user
         self.user_data = {}
 
     def set_current_user(self, username):
-        """פונקציה שנקראת מיד אחרי לוגין כדי לקבוע מי המשתמש"""
+        """Called immediately after login to set current user"""
         self.current_username = username
         self.user_data["username"] = username
 
     def fetch_user_data(self):
-        """ניגש לשרת ומושך את הנתונים העדכניים של המשתמש הנוכחי"""
+        """Fetch current user's data from server"""
         if not self.current_username:
             return {"username": "Guest", "email": ""}
 
         try:
-            # שליחת בקשה לשרת לקבלת פרופיל מלא
-            # אנו מניחים שיש endpoint בשרת שמקבל username ומחזיר פרטים
+            # Send request to server for full profile
+            # Assumes endpoint exists that receives username and returns details
             response = self.api.post("/users/profile", {"username": self.current_username})
             
             email = ""
             if response and "email" in response:
                 email = response["email"]
 
-            # עדכון הזיכרון הלוקאלי עם המידע הטרי מהשרת
+            # Update local memory with fresh server data
             self.user_data = {
                 "username": self.current_username,
                 "email": email
@@ -34,11 +34,11 @@ class ProfileModel:
 
         except Exception as e:
             print(f"❌ Error fetching profile: {e}")
-            # במקרה שגיאה נחזיר לפחות את השם שיש לנו
+            # On error, return at least the name we have
             return {"username": self.current_username, "email": ""}
 
     def save_profile_data(self, new_email):
-        """שמירת האימייל לשרת"""
+        """Save email to server"""
         if not self.current_username:
             return False, "No user logged in"
 
@@ -48,10 +48,10 @@ class ProfileModel:
                 "email": new_email
             }
             
-            # עדכון בשרת
+            # Update on server
             resp = self.api.post("/users/update", payload)
             
-            # --- הוספתי את השורה הזו לדיבאג ---
+            # Debug logging for server response
             print(f"DEBUG: Server response for update: {resp}") 
             # ----------------------------------
 
@@ -62,11 +62,11 @@ class ProfileModel:
                 return False, "Failed to update email"
                 
         except Exception as e:
-            print(f"Error saving profile: {e}") # הדפסת שגיאה ברורה יותר
+            print(f"Error saving profile: {e}")  # Clearer error output
             return False, str(e)
 
     def change_password(self, old_pass, new_pass):
-        """שינוי סיסמה מול השרת"""
+        """Change password via server"""
         if not self.current_username:
             return False, "No user logged in"
             
@@ -88,6 +88,6 @@ class ProfileModel:
             return False, str(e)
 
     def logout(self):
-        """איפוס נתונים ביציאה"""
+        """Reset data on logout"""
         self.current_username = None
         self.user_data = {}

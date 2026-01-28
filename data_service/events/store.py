@@ -37,17 +37,17 @@ class EventStore:
         100 events every time we just want the dashboard list.
         """
         if event.event_type == "TripCreated":
-            # 1. שליפת התוכנית
+            # 1. Extract the plan
             initial_plan = event.initial_request.get("generated_plan", {})
             current_status = "ready" if initial_plan else "planning"
 
-            # 2. בניית היסטוריה נקייה - ללא הודעות טקסט מקדימות
-            # הקליינט יודע להתמודד עם רשימה שמתחילה ישר ב-plan
+            # 2. Build clean history - without preliminary text messages
+            # The client can handle a list that starts directly with a plan
             initial_history = [
                 {"type": "plan", "content": {"title": "Initial Plan", "plan": initial_plan}}
             ]
 
-            # 3. שמירה ל-Snapshot
+            # 3. Save to snapshot
             self.snapshots.insert_one({
                 "trip_id": event.trip_id,
                 "username": event.username,

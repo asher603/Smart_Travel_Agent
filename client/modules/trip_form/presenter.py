@@ -41,10 +41,10 @@ class TripFormPresenter(QObject):
         self.bus.subscribe("login_success", self.on_login)
 
     def on_login(self, data):
-        """Updates the model with the logged-in username AND email"""
-        # שליפת הנתונים מאירוע ההתחברות
+        """Updates the model with the logged-in username AND email."""
+        # Extract user data from login event
         username = data.get("username")
-        email = data.get("email")  # <--- הוספנו את זה
+        email = data.get("email")
         
         if username:
             print(f"📝 TripForm received user: {username}")
@@ -52,7 +52,7 @@ class TripFormPresenter(QObject):
             
         if email:
             print(f"📧 TripForm received email: {email}")
-            self.model.email = email # <--- שומרים במודל
+            self.model.email = email
 
     def handle_generate(self, data):
         # 🛡️ SECURITY CHECK - Prompt Injection Protection

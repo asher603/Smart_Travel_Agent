@@ -6,11 +6,11 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal
 
 # ============================================================================
-# רכיבים מעוצבים (Custom Widgets) - לשימוש חוזר
+# Custom Styled Widgets - Reusable components
 # ============================================================================
 
 class GlassFrame(QFrame):
-    """מסגרת בסיסית עם עיצוב זכוכית (שקוף למחצה)"""
+    """Base frame with glass (semi-transparent) styling"""
     def __init__(self):
         super().__init__()
         self.setStyleSheet("""
@@ -22,7 +22,7 @@ class GlassFrame(QFrame):
         """)
 
 class StyledInput(QLineEdit):
-    """שדה קלט טקסט מעוצב בסגנון זכוכית"""
+    """Glass-styled text input field"""
     def __init__(self, placeholder, is_password=False):
         super().__init__()
         self.setPlaceholderText(placeholder)
@@ -31,7 +31,7 @@ class StyledInput(QLineEdit):
         
         self.setFixedHeight(45)
         
-        # עיצוב השדה
+        # Input field styling
         self.setStyleSheet("""
             QLineEdit {
                 background-color: rgba(0, 0, 0, 0.2);
@@ -55,7 +55,7 @@ class StyledInput(QLineEdit):
 # ============================================================================
 
 class ProfileView(QWidget):
-    # הגדרת סיגנלים לתקשורת החוצה (ל-Presenter)
+    # Signals for external communication (to Presenter)
     back_signal = Signal()
     logout_signal = Signal()
     save_identity_signal = Signal(dict)
@@ -66,7 +66,7 @@ class ProfileView(QWidget):
         self.setup_ui()
 
     def setup_ui(self):
-        """בניית ממשק המשתמש"""
+        """Build the user interface"""
         
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -88,7 +88,7 @@ class ProfileView(QWidget):
         header_layout = QVBoxLayout(header)
         header_layout.setContentsMargins(25, 15, 25, 15)
 
-        # כפתור חזרה
+        # Back button
         top_bar = QHBoxLayout()
         self.btn_back = QPushButton("🔙 Back")
         self.btn_back.setCursor(Qt.PointingHandCursor)
@@ -98,7 +98,7 @@ class ProfileView(QWidget):
         top_bar.addStretch()
         header_layout.addLayout(top_bar)
 
-        # פרטי משתמש
+        # User details
         user_info = QHBoxLayout()
         user_info.setSpacing(15)
         
@@ -113,7 +113,7 @@ class ProfileView(QWidget):
         """)
         
         name_layout = QVBoxLayout()
-        self.lbl_name = QLabel("Guest") # יוחלף מיד בטעינה
+        self.lbl_name = QLabel("Guest")  # Will be replaced on load
         self.lbl_name.setStyleSheet("font-size: 24px; font-weight: bold; color: white; background: transparent;")
         
         self.lbl_role = QLabel("Account Settings")
@@ -137,7 +137,7 @@ class ProfileView(QWidget):
         content_layout.setContentsMargins(40, 30, 40, 30)
         content_layout.setSpacing(25)
 
-        # --- כרטיס אימייל ---
+        # --- Email Card ---
         email_card = GlassFrame()
         ec_layout = QVBoxLayout(email_card)
         ec_layout.setContentsMargins(20, 20, 20, 20)
@@ -158,7 +158,7 @@ class ProfileView(QWidget):
         
         content_layout.addWidget(email_card)
 
-        # --- כרטיס סיסמה ---
+        # --- Password Card ---
         pass_card = GlassFrame()
         pc_layout = QVBoxLayout(pass_card)
         pc_layout.setContentsMargins(20, 20, 20, 20)
@@ -185,7 +185,7 @@ class ProfileView(QWidget):
         
         content_layout.addStretch()
 
-        # --- כפתור התנתקות ---
+        # --- Logout Button ---
         self.btn_logout = QPushButton("🚪 Log Out")
         self.btn_logout.setCursor(Qt.PointingHandCursor)
         self.btn_logout.setFixedHeight(45)
@@ -200,7 +200,7 @@ class ProfileView(QWidget):
 
         main_layout.addWidget(content_widget)
 
-    # --- פונקציות לוגיקה פנימיות ---
+    # --- Internal Logic Functions ---
     def on_save_identity_click(self):
         data = {"email": self.inp_email.text()}
         self.save_identity_signal.emit(data)
@@ -209,17 +209,17 @@ class ProfileView(QWidget):
         self.change_pass_signal.emit(self.inp_old_pass.text(), self.inp_new_pass.text())
 
     def update_view(self, data):
-        """מקבל נתונים ומעדכן את המסך"""
+        """Receives data and updates the screen"""
         
-        # 1. עדכון שם המשתמש בכותרת (אם קיים)
+        # 1. Update username in header (if available)
         if "username" in data and data["username"]:
             self.lbl_name.setText(data["username"].capitalize())
 
-        # 2. עדכון שדה האימייל
+        # 2. Update email field
         if "email" in data:
             new_email = data["email"]
-            # מעדכן רק אם הנתון לא ריק וגם (השדה ריק או שהמשתמש לא כותב בו כרגע)
-            # זה מונע מצב שבו התשובה מהשרת דורסת את מה שהמשתמש כותב באותו רגע
+            # Only update if data is not empty and (field is empty or user isn't typing)
+            # This prevents server response from overwriting what user is currently typing
             if new_email is not None:
                 if self.inp_email.text() == "" or not self.inp_email.hasFocus():
                     self.inp_email.setText(new_email)

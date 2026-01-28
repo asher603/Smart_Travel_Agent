@@ -12,7 +12,7 @@ async def generate_trip(request: TripRequest):
     logger.info(f"📝 Handling request for: {request.destination}")
     try:
         agent = TravelAgent()
-        # מנסים לקבל טיול (כרגע גם אם ה-MCP נכשל, הוא יחזיר משהו מה-LLM)
+        # Attempt to get trip (returns LLM result even if MCP fails)
         result = await agent.plan_trip(request, analyzed_vibe="fun")
         return result
     except Exception as e:

@@ -40,8 +40,8 @@ class LLMFactory:
             model=settings.LOCAL_LLM_MODEL,
             base_url=settings.OLLAMA_BASE_URL,
             temperature=0.7,
-            timeout=300.0,    # תוספת: לחכות עד 5 דקות לטעינת מודל
-            keep_alive="1h"   # תוספת: להשאיר את המודל בזיכרון לשעה
+            timeout=300.0,    # Wait up to 5 minutes for model loading
+            keep_alive="1h"   # Keep model in memory for 1 hour
         )
 
     async def invoke(self, messages, preferred_model="gemini"):
