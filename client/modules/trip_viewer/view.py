@@ -16,6 +16,9 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QByteArray, QTimer
 from PySide6.QtGui import QPixmap, QColor
 
+# 🛡️ Security
+from core.security import validate_and_protect
+
 from .workers import (
     ImageWorker, ChatWorker, StateSaverWorker, 
     WeatherWorker, FlightWorker, BudgetWorker, RefineWorker
@@ -924,7 +927,8 @@ class TripViewerView(QWidget):
             bc_layout.addWidget(fallback_lbl)
         
         bw = BudgetWorker(self.api, plan_data.get("budget", "2000"))
-        bw.finished_signal.connect(lambda res, c=current_chart: self.update_budget_chart(res, c))
+        currency = plan_data.get("currency", "USD")
+        bw.finished_signal.connect(lambda res, c=current_chart, cur=currency: self.update_budget_chart(res, c, cur))
         self.start_worker(bw)
 
         row2.addWidget(budget_card, 1)
@@ -997,7 +1001,7 @@ class TripViewerView(QWidget):
     #                           BUDGET CHART
     # ============================================================================
 
-    def update_budget_chart(self, breakdown_data, chart_widget):
+    def update_budget_chart(self, breakdown_data, chart_widget, currency="USD"):
         """Parse and update budget chart data"""
         if not chart_widget or not breakdown_data:
             return
@@ -1008,7 +1012,7 @@ class TripViewerView(QWidget):
             if match:
                 clean_data[category] = int(match.group(1))
         
-        chart_widget.update_data(clean_data)
+        chart_widget.update_data(clean_data, currency)
 
     # ============================================================================
     #                           IMAGE GENERATION
@@ -1124,6 +1128,10 @@ class TripViewerView(QWidget):
         self.chat_input.setText("")
         
         if not msg:
+            return
+        
+        # 🛡️ SECURITY CHECK - Prompt Injection Protection
+        if not validate_and_protect(chat_message=msg):
             return
             
         self.add_bubble(msg, True)

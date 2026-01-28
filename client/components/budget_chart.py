@@ -3,6 +3,15 @@ from PySide6.QtGui import QPainter, QColor, QFont
 from PySide6.QtCore import Qt, QMargins
 from PySide6.QtWidgets import QToolTip, QSizePolicy
 
+# Currency symbols mapping
+CURRENCY_SYMBOLS = {
+    "USD": "$",
+    "EUR": "€",
+    "ILS": "₪",
+    "GBP": "£",
+    "JPY": "¥",
+}
+
 class BudgetPieChart(QChartView):
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -31,10 +40,13 @@ class BudgetPieChart(QChartView):
         self.chart.addSeries(self.series)
         self.setChart(self.chart)
 
-    def update_data(self, data: dict):
+    def update_data(self, data: dict, currency: str = "USD"):
         self.series.clear()
         total = sum(data.values())
         if total == 0: return
+
+        # Get currency symbol
+        symbol = CURRENCY_SYMBOLS.get(currency, currency)
 
         colors = ["#5e35b1", "#1e88e5", "#00897b", "#fdd835", "#e53935", "#8e24aa"]
         category_names = []
@@ -43,16 +55,16 @@ class BudgetPieChart(QChartView):
         for i, (category, amount) in enumerate(data.items()):
             category_names.append(category) # Store name for legend fix later
             
-            # Slice Label = Money Amount
-            slice_obj = self.series.append(f"${amount}", amount) 
+            # Slice Label = Money Amount with correct currency symbol
+            slice_obj = self.series.append(f"{symbol}{amount}", amount) 
             slice_obj.setLabelVisible(True)
             slice_obj.setLabelColor(Qt.white)
             slice_obj.setLabelPosition(QPieSlice.LabelInsideHorizontal)
             slice_obj.setColor(QColor(colors[i % len(colors)]))
             
-            # Tooltip Data
+            # Tooltip Data with correct currency symbol
             pct = (amount / total) * 100
-            slice_obj.data_tooltip = f"{category}\n${amount} ({pct:.1f}%)"
+            slice_obj.data_tooltip = f"{category}\n{symbol}{amount} ({pct:.1f}%)"
 
         # 2. Fix Legend Labels
         # By default, Legend takes the Slice Label (which is now Money).

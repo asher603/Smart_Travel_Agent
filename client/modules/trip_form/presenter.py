@@ -1,4 +1,5 @@
 from PySide6.QtCore import QObject, QThread, Signal
+from core.security import validate_and_protect
 
 # Worker to run API call in background
 class GenerateTripWorker(QThread):
@@ -54,6 +55,14 @@ class TripFormPresenter(QObject):
             self.model.email = email # <--- שומרים במודל
 
     def handle_generate(self, data):
+        # 🛡️ SECURITY CHECK - Prompt Injection Protection
+        if not validate_and_protect(
+            destination=data.get("destination"),
+            origin=data.get("origin"),
+            interests=data.get("interests")
+        ):
+            return
+        
         # 1. Lock UI
         self.view.show_loading(True)
 

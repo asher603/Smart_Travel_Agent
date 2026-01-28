@@ -22,17 +22,22 @@ class APIService:
                 return response.json()
             else:
                 print(f"⚠️ API Error {response.status_code}: {response.text}")
-                return None
+                # Return error details instead of None
+                try:
+                    error_data = response.json()
+                    return {"status": "error", "detail": error_data.get("detail", "Request failed")}
+                except:
+                    return {"status": "error", "detail": f"Error {response.status_code}"}
         except Exception as e:
             print(f"❌ Connection Exception: {e}")
-            return None
+            return {"status": "error", "detail": f"Connection error: {e}"}
 
     # --- AUTH METHODS ---
     def login(self, username, password):
-        return self.post("/auth/login", {"username": username, "password": password}) or {"status": "error"}
+        return self.post("/auth/login", {"username": username, "password": password})
 
     def register(self, username, password):
-        return self.post("/auth/register", {"username": username, "password": password}) or {"status": "error"}
+        return self.post("/auth/register", {"username": username, "password": password})
 
     # --- TRIP METHODS ---
     def generate_trip(self, payload):

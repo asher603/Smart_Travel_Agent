@@ -17,6 +17,12 @@ from mcp.client.sse import sse_client
 
 from ai_service.core.config import settings
 from ai_service.core.llm_factory import llm_manager
+from ai_service.core.prompt_guard import (
+    prompt_guard, 
+    validate_trip_request, 
+    validate_refine_request, 
+    validate_chat_request
+)
 from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest
 
 logger = logging.getLogger("uvicorn")
@@ -31,15 +37,22 @@ class TravelAgent:
         """
         Answers a user question based on the provided context (trip plan).
         """
+        # 🛡️ Prompt Injection Protection
+        is_valid, clean_question, error = validate_chat_request(req.question)
+        if not is_valid:
+            logger.warning(f"🚨 Blocked chat request: {error}")
+            return {"answer": "I couldn't process your question. Please try rephrasing it."}
+        
         try:
             prompt = ChatPromptTemplate.from_messages([
-                ("system", "You are a helpful travel assistant. Answer the user's question concisely based strictly on the provided trip context."),
+                ("system", f"""{prompt_guard.get_safety_prefix()}
+You are a helpful travel assistant. Answer the user's question concisely based strictly on the provided trip context."""),
                 ("user", "Trip Context:\n{context}\n\nUser Question: {question}")
             ])
             
             messages = prompt.format_messages(
                 context=req.context,
-                question=req.question
+                question=prompt_guard.wrap_user_input(clean_question)
             )
             
             response = await self.manager.invoke(messages, preferred_model=req.model)
@@ -55,9 +68,16 @@ class TravelAgent:
         """
         Refines an existing trip plan based on user instructions.
         """
+        # 🛡️ Prompt Injection Protection
+        is_valid, clean_instructions, error = validate_refine_request(req.instructions)
+        if not is_valid:
+            logger.warning(f"🚨 Blocked refine request: {error}")
+            raise ValueError("Invalid instructions detected. Please try rephrasing.")
+        
         # Prompt Setup:
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are a precise JSON-speaking travel agent. Modify the plan based on instructions."),
+            ("system", f"""{prompt_guard.get_safety_prefix()}
+You are a precise JSON-speaking travel agent. Modify the plan based on instructions."""),
             ("user", """
              Current Plan:
              {current_plan}
@@ -83,7 +103,7 @@ class TravelAgent:
 
         messages = prompt.format_messages(
             current_plan=json.dumps(req.current_plan),
-            instructions=req.instructions
+            instructions=prompt_guard.wrap_user_input(clean_instructions)
         )
         
         try:
@@ -113,10 +133,24 @@ class TravelAgent:
             raise e
 
     async def plan_trip(self, req: TripRequest, analyzed_vibe: str) -> Dict[str, Any]:
+        # 🛡️ Prompt Injection Protection
+        is_valid, sanitized, error = validate_trip_request(
+            req.destination, req.origin, req.interest
+        )
+        if not is_valid:
+            logger.warning(f"🚨 Blocked trip request: {error}")
+            return {
+                "summary": "Request blocked due to invalid input. Please check your entries.",
+                "itinerary": [],
+                "budget_breakdown": {},
+                "analyzed_vibe": "Error"
+            }
+        
         # Prompt Setup:
         parser = JsonOutputParser()
         prompt = ChatPromptTemplate.from_messages([
-            ("system", "You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW JSON ONLY."),
+            ("system", f"""{prompt_guard.get_safety_prefix()}
+You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW JSON ONLY."""),
             ("user", """
              Plan a {duration}-day trip from {origin} to {destination}.
              Budget: {budget} {currency}.
@@ -135,11 +169,11 @@ class TravelAgent:
 
         messages = prompt.format_messages(
             duration=req.duration, 
-            origin=req.origin, 
-            destination=req.destination,
+            origin=sanitized["origin"], 
+            destination=sanitized["destination"],
             budget=req.budget, 
             currency=req.currency, 
-            interest=req.interest,
+            interest=prompt_guard.wrap_user_input(sanitized["interests"]),
             vibe=analyzed_vibe
         )
         

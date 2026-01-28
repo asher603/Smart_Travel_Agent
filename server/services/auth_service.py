@@ -25,10 +25,10 @@ async def register_user(data):
     })
 
     if response.status_code == 400:
-        raise HTTPException(status_code=400, detail="Username already exists")
+        raise HTTPException(status_code=400, detail="Username already taken. Please choose another.")
     
     if response.status_code != 200:
-         raise HTTPException(status_code=500, detail="Registration failed")
+         raise HTTPException(status_code=500, detail="Registration failed. Please try again.")
 
     return {"status": "success", "message": "User created successfully"}
 
@@ -42,7 +42,12 @@ async def login_user(data):
     })
 
     if response.status_code == 401:
-        raise HTTPException(status_code=401, detail="Invalid username or password")
+        # Get specific error message from data service
+        try:
+            error_detail = response.json().get("detail", "Invalid credentials")
+        except:
+            error_detail = "Invalid credentials"
+        raise HTTPException(status_code=401, detail=error_detail)
     
     if response.status_code != 200:
         raise HTTPException(status_code=500, detail="Login check failed")

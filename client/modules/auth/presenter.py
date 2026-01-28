@@ -1,3 +1,5 @@
+from core.security import validate_and_protect
+
 class AuthPresenter:
     def __init__(self, view, api_service, event_bus):
         self.view = view
@@ -7,9 +9,21 @@ class AuthPresenter:
         # --- FIX: Match signal names to those in view.py ---
         self.view.login_signal.connect(self.handle_login)
         self.view.register_signal.connect(self.handle_register)
+        
+        # 🔄 Subscribe to logout event to reset the form
+        self.bus.subscribe("NAVIGATE", self.on_navigate)
+
+    def on_navigate(self, data):
+        """Reset form when navigating back to login screen"""
+        if data.get("index") == 0:
+            self.view.reset_form()
 
     def handle_login(self, username, password):
         print(f"🔑 Presenter: Login requested for {username}")
+        
+        # 🛡️ SECURITY CHECK
+        if not validate_and_protect(username=username, password=password):
+            return
         
         # Call API (We assume api_service has a .login method)
         # If your API service is generic, we might need to adjust this later.
@@ -31,6 +45,10 @@ class AuthPresenter:
 
     def handle_register(self, username, password):
         print(f"📝 Presenter: Register requested for {username}")
+        
+        # 🛡️ SECURITY CHECK
+        if not validate_and_protect(username=username, password=password):
+            return
         
         try:
             response = self.api.register(username, password)

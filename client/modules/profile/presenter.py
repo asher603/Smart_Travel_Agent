@@ -1,5 +1,6 @@
 from PySide6.QtCore import QObject, QThread, Signal
 from PySide6.QtWidgets import QMessageBox
+from core.security import validate_and_protect
 
 class DataWorker(QThread):
     finished = Signal(dict)
@@ -57,6 +58,11 @@ class ProfilePresenter(QObject):
 
     def on_save_identity(self, data):
         new_email = data.get("email")
+        
+        # 🛡️ SECURITY CHECK
+        if not validate_and_protect(email=new_email):
+            return
+        
         ok, msg = self.model.save_profile_data(new_email)
         
         if ok:
@@ -65,6 +71,10 @@ class ProfilePresenter(QObject):
             QMessageBox.warning(self.view, "Error", msg)
 
     def on_change_password(self, old_pass, new_pass):
+        # 🛡️ SECURITY CHECK
+        if not validate_and_protect(old_password=old_pass, new_password=new_pass):
+            return
+        
         ok, msg = self.model.change_password(old_pass, new_pass)
         
         if ok: 

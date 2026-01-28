@@ -250,3 +250,17 @@ class AuthView(QWidget):
         self.btn_login_action.setEnabled(True)
         self.btn_reg_action.setText("Create Account")
         self.btn_reg_action.setEnabled(True)
+
+    def reset_form(self):
+        """איפוס כל הטופס - נקרא כשחוזרים למסך אחרי logout"""
+        # איפוס שדות הטקסט
+        self.l_user.setText("")
+        self.l_pass.setText("")
+        self.r_user.setText("")
+        self.r_pass.setText("")
+        
+        # איפוס כפתורים
+        self._reset_buttons()
+        
+        # חזרה לטאב login
+        self.switch_to_login()

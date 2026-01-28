@@ -44,7 +44,7 @@ def verify(user: UserAuth):
     doc = users_col.find_one({"username": user.username})
     if not doc:
         print(f"❌ DEBUG: Verify failed - User '{user.username}' not found in DB")
-        raise HTTPException(status_code=401, detail="Invalid credentials")
+        raise HTTPException(status_code=401, detail="User not found")
     
     # Check password hash
     stored_pass = doc["password"]
@@ -56,7 +56,7 @@ def verify(user: UserAuth):
         return {"status": "valid"}
     
     print(f"❌ DEBUG: Verify failed - Password mismatch for '{user.username}'")
-    raise HTTPException(status_code=401, detail="Invalid credentials")
+    raise HTTPException(status_code=401, detail="Incorrect password")
 
 class UserProfileRequest(BaseModel):
     username: str
