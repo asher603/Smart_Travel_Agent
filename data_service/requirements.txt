@@ -6,4 +6,5 @@ certifi
 pydantic
 pydantic-settings
 python-dotenv
-bcrypt
+bcrypt 
+
