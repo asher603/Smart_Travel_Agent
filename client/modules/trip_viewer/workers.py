@@ -11,9 +11,15 @@ class ImageWorker(QThread):
         self.api = api; self.destination = destination; self.interest = interest
     def run(self):
         try:
+            print(f"🎨 ImageWorker: Calling API for {self.destination}")
             response = self.api.post("/ai/generate_image", {"destination": self.destination, "interest": self.interest})
-            self.finished_signal.emit(response.get("image_base64") if response else None)
-        except: self.finished_signal.emit(None)
+            print(f"🎨 ImageWorker: Response type={type(response)}, keys={response.keys() if isinstance(response, dict) else 'N/A'}")
+            img_b64 = response.get("image_base64") if response else None
+            print(f"🎨 ImageWorker: Got image_base64? {img_b64 is not None and len(img_b64) > 0 if img_b64 else False}")
+            self.finished_signal.emit(img_b64)
+        except Exception as e:
+            print(f"🎨 ImageWorker ERROR: {e}")
+            self.finished_signal.emit(None)
 
 class ChatWorker(QThread):
     finished_signal = Signal(str)

@@ -173,6 +173,8 @@ class TripViewerView(QWidget):
         self.current_active_ver_id = None
         self.current_plan_data = {}
         self.current_context = ""
+        self.current_image_b64 = None  # Store current trip image
+        self.current_weather = None  # Store current weather
 
         self.setup_ui()
         self.create_particles()
@@ -1020,14 +1022,25 @@ class TripViewerView(QWidget):
 
     def trigger_image_generation(self, destination, interest, ver_id):
         """Start image generation worker"""
+        print(f"🎨 Starting image generation for ver_id={ver_id}, dest={destination}")
         worker = ImageWorker(self.api, destination, interest)
-        worker.finished_signal.connect(lambda b64: self.render_image_in_placeholder(b64, ver_id))
+        worker.finished_signal.connect(lambda b64: self._on_image_received(b64, ver_id))
         self.start_worker(worker)
+    
+    def _on_image_received(self, b64, ver_id):
+        """Handle received image"""
+        print(f"📷 Image received for ver_id={ver_id}, has_data={b64 is not None and len(b64) > 0 if b64 else False}")
+        if b64:
+            print(f"   Image data length: {len(b64)} chars")
+        self.render_image_in_placeholder(b64, ver_id)
 
     def render_image_in_placeholder(self, b64, ver_id, save=True):
         """Render generated image in placeholder"""
+        print(f"🖼️ render_image_in_placeholder called: ver_id={ver_id}, has_b64={b64 is not None}")
         layout = self.image_placeholders.get(ver_id)
+        print(f"   Available placeholders: {list(self.image_placeholders.keys())}")
         if not layout:
+            print(f"   ⚠️ No layout found for ver_id={ver_id}!")
             return
             
         # Clear loading placeholder
@@ -1082,6 +1095,11 @@ class TripViewerView(QWidget):
         lbl.setStyleSheet("border: none; background: transparent;")
         lbl.clicked.connect(lambda: ImagePopup(pix).exec())
         layout.addWidget(lbl)
+        
+        # Store image for PDF export
+        if b64:
+            self.current_image_b64 = b64
+            print(f"📷 Image stored for PDF export ({len(b64)} chars)")
 
         if save and not self.is_loading_mode:
             content = b64 if b64 else "" 
@@ -1107,6 +1125,11 @@ class TripViewerView(QWidget):
         """Update weather display"""
         if not self.current_active_ver_id:
             return
+        
+        # Store weather for PDF
+        if data:
+            self.current_weather = data
+            print(f"🌤️ Weather stored for PDF: {data.get('temp', '--')}°C")
             
         lbl = self.weather_labels.get(self.current_active_ver_id)
         if lbl and data:
@@ -1215,17 +1238,42 @@ class TripViewerView(QWidget):
         if not generate_trip_pdf:
             QMessageBox.warning(self, "Error", "PDF module not available")
             return
+        
+        # Debug: Check if image exists
+        print(f"📷 Image available for PDF: {self.current_image_b64 is not None}")
+        print(f"🌤️ Weather available: {self.current_weather is not None}")
+        
+        # Generate smart filename
+        dest = self.current_plan_data.get("destination", "Trip")
+        start = self.current_plan_data.get("start_date", "")
+        default_name = f"Trip_to_{dest.replace(' ', '_')}"
+        if start:
+            default_name += f"_{start}"
+        default_name += ".pdf"
             
         filename, _ = QFileDialog.getSaveFileName(
             self, 
             "Save Trip PDF", 
-            f"Trip_Plan.pdf", 
+            default_name, 
             "PDF Files (*.pdf)"
         )
         
         if filename:
             try:
-                generate_trip_pdf(self.current_plan_data, filename)
+                # Prepare weather info string
+                weather_str = None
+                if self.current_weather:
+                    icon = self.current_weather.get('icon', '')
+                    temp = self.current_weather.get('temp', '')
+                    desc = self.current_weather.get('desc', '')
+                    weather_str = f"{icon} {temp}°C - {desc}"
+                
+                generate_trip_pdf(
+                    self.current_plan_data, 
+                    filename,
+                    image_base64=self.current_image_b64,
+                    weather_info=weather_str
+                )
                 QMessageBox.information(self, "Success", "✅ PDF saved successfully!")
                 if os.name == 'nt':
                     os.startfile(filename)

@@ -13,6 +13,7 @@ from PySide6.QtGui import QColor, QTextCharFormat, QBrush, QFont
 
 from components.floating_particle import FloatingParticle
 from components.modern_input import ModernInput
+from components.ai_loading_view import AIAgentLoadingView
 
 
 class InterestChip(QPushButton):
@@ -455,6 +456,9 @@ class TripFormView(QWidget):
         self.interest_chips = []
         self.init_ui()
         self.create_particles()
+        
+        # AI Loading screen
+        self.loading_view = AIAgentLoadingView(self)
 
     def create_particles(self):
         for _ in range(8):
@@ -847,6 +851,13 @@ class TripFormView(QWidget):
 
     def show_loading(self, is_loading):
         if is_loading:
+            # Show AI loading view
+            self.loading_view.show_loading(
+                title="AI Agent Working",
+                subtitle="Creating your perfect trip..."
+            )
+            
+            # Also disable the button
             self.btn_generate.setText("Creating trip...")
             self.btn_generate.setEnabled(False)
             self.btn_generate.setStyleSheet("""
@@ -860,6 +871,9 @@ class TripFormView(QWidget):
                 }
             """)
         else:
+            # Hide AI loading view
+            self.loading_view.hide_loading()
+            
             self.btn_generate.setText("Generate Trip  →")
             self.btn_generate.setEnabled(True)
             self.btn_generate.setStyleSheet("""
@@ -877,6 +891,12 @@ class TripFormView(QWidget):
                         stop:0 #2563EB, stop:1 #1D4ED8);
                 }
             """)
+    
+    def resizeEvent(self, event):
+        """Handle resize to keep loading view fullscreen"""
+        super().resizeEvent(event)
+        if hasattr(self, 'loading_view'):
+            self.loading_view.resize(self.size())
 
     def show_message(self, title, message):
         msg = QMessageBox(self)
