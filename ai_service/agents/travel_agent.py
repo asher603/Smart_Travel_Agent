@@ -23,7 +23,7 @@ from ai_service.core.prompt_guard import (
     validate_refine_request, 
     validate_chat_request
 )
-from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest
+from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest, BudgetAnalysisRequest
 
 logger = logging.getLogger("uvicorn")
 
@@ -39,7 +39,7 @@ class TravelAgent:
         """
         Answers a user question based on the provided context (trip plan).
         """
-        # 🛡️ Prompt Injection Protection
+        # Prompt Injection Protection
         is_valid, clean_question, error = validate_chat_request(req.question)
         if not is_valid:
             logger.warning(f"🚨 Blocked chat request: {error}")
@@ -208,6 +208,57 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
                 "itinerary": [],
                 "budget_breakdown": {},
                 "analyzed_vibe": "Error"
+            }
+        
+    async def analyze_budget(self, req: BudgetAnalysisRequest) -> Dict[str, Any]:
+        """
+        Asks the AI to split the budget based on real-world costs for the destination.
+        """
+        parser = JsonOutputParser()
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", "You are a financial travel expert. Analyze the budget and provide a realistic breakdown."),
+            ("user", """
+             Create a budget breakdown for a {duration}-day trip to {destination} from {origin}.
+             Total Budget: {budget} {currency}.
+             Traveler Interests: {interest}.
+             
+             Task:
+             1. Estimate flight costs from {origin} to {destination} for this duration.
+             2. Estimate accommodation (hotels/Airbnb) costs.
+             3. Estimate food, activities, and local transport.
+             4. Ensure the total sums up to approximately the provided budget.
+             
+             CRITICAL OUTPUT RULES:
+             - Return ONLY valid JSON.
+             - Format: {{ "breakdown": {{ "Flights": 0, "Accommodation": 0, "Food": 0, "Activities": 0, "Transport": 0 }} }}
+             - Values should be integers (no currency symbols).
+             """)
+        ])
+
+        messages = prompt.format_messages(
+            duration=req.duration,
+            destination=req.destination,
+            origin=req.origin,
+            budget=req.budget,
+            currency=req.currency,
+            interest=req.interest
+        )
+        
+        try:
+            # Use the manager with the requested model
+            response = await self.manager.invoke(messages, preferred_model=req.model)
+            content = response.content if hasattr(response, 'content') else str(response)
+            cleaned_content = self._clean_json_string(content)
+            
+            return parser.parse(cleaned_content)
+            
+        except Exception as e:
+            logger.error(f"❌ Budget Analysis Failed: {e}")
+            # Fallback to a "safe" even split if AI fails, to prevent crash
+            return {
+                "breakdown": {
+                    "Flights": 0, "Accommodation": 0, "Food": 0, "Activities": 0, "Transport": 0
+                }
             }
 
     async def _trigger_automation(self, trip_data: dict, req: TripRequest):

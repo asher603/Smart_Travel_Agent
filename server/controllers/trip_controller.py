@@ -48,8 +48,14 @@ class FlightRequest(BaseModel):
     to: str
     date: str
 
-class BudgetRequest(BaseModel):
+class BudgetAnalysisRequest(BaseModel):
+    destination: str
+    origin: str
+    duration: int
     budget: str
+    currency: str
+    interest: str
+    model: str = "gemini"
 
 class UpdateStateRequest(BaseModel):
     trip_id: str
@@ -283,31 +289,25 @@ def get_flights(req: FlightRequest):
     return {"flights": results}
 
 @router.post("/analyze_budget")
-async def analyze_budget(req: BudgetRequest):
-    """
-    Utility to breakdown a budget string into categories using simple heuristics.
-    """
-    print(f"💰 Analyzing budget: {req.budget}")
-    try:
-        # Extract numeric value from string
-        matches = re.findall(r"[-+]?\d*\.\d+|\d+", req.budget.replace(",", ""))
-        total = float(matches[0]) if matches else 2000.0
-    except: 
-        total = 2000.0
+async def analyze_budget(req: BudgetAnalysisRequest):
+    print(f"💰 AI Analyzing budget for {req.destination}...")
+    
+    async with httpx.AsyncClient() as client:
+        try:
+            # Forward to AI Service
+            ai_resp = await client.post(
+                f"{settings.AI_SERVICE_URL}/analyze_budget",
+                json=req.dict(),
+                timeout=60.0 
+            )
+            
+            if ai_resp.status_code == 200:
+                return ai_resp.json() # Returns { "breakdown": { ... } }
+            
+            print(f"⚠️ AI Budget Error: {ai_resp.text}")
+            raise HTTPException(status_code=502, detail="AI Budget Analysis failed")
 
-    # Randomize distribution slightly for realism
-    f_share = 0.35 + random.uniform(-0.05, 0.05)
-    h_share = 0.35 + random.uniform(-0.05, 0.05)
-    fd_share = 0.20 + random.uniform(-0.03, 0.03)
-    a_share = 1.0 - (f_share + h_share + fd_share)
-
-    def fmt(amount, share): return f"${int(amount)} ({int(share*100)}%)"
-
-    return {
-        "breakdown": {
-            "Flights": fmt(total * f_share, f_share),
-            "Accommodation": fmt(total * h_share, h_share),
-            "Food": fmt(total * fd_share, fd_share),
-            "Activities": fmt(total * a_share, a_share)
-        }
-    }
+        except Exception as e:
+            print(f"❌ Budget Error: {e}")
+            # Fallback if AI service is totally down
+            return {"breakdown": {"Flights": 0, "Accommodation": 0, "Food": 0, "Activities": 0}}

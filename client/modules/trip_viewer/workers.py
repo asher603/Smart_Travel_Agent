@@ -53,12 +53,35 @@ class WeatherWorker(QThread):
 
 class BudgetWorker(QThread):
     finished_signal = Signal(dict)
-    def __init__(self, api, budget):
+    
+    def __init__(self, api, plan_data):
         super().__init__()
-        self.api = api; self.budget = budget
+        self.api = api
+        self.plan = plan_data
+
     def run(self):
-        resp = self.api.post("/trips/analyze_budget", {"budget": self.budget})
-        self.finished_signal.emit(resp.get("breakdown", {}) if resp else {})
+        try:
+            # Calculate duration based on itinerary length if dates aren't easy to parse
+            itinerary = self.plan.get("itinerary", [])
+            duration = len(itinerary) if itinerary else 5
+            
+            payload = {
+                "destination": self.plan.get("destination", "Unknown"),
+                "origin": self.plan.get("origin", "Unknown"),
+                "duration": duration,
+                "budget": str(self.plan.get("budget", "2000")),
+                "currency": self.plan.get("currency", "USD"),
+                "interest": self.plan.get("interests", "General"),
+                "model": self.plan.get("model", "gemini") # Pass the model preference if available
+            }
+
+            # Call API & emit result
+            resp = self.api.post("/trips/analyze_budget", payload)
+            self.finished_signal.emit(resp.get("breakdown", {}) if resp else {})
+            
+        except Exception as e:
+            print(f"❌ BudgetWorker Error: {e}")
+            self.finished_signal.emit({})
 
 class RefineWorker(QThread):
     finished = Signal(dict)

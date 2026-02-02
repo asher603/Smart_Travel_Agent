@@ -1,6 +1,6 @@
 from fastapi import APIRouter, HTTPException
 import logging
-from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest, ImageRequest
+from ai_service.schemas.api_models import TripRequest, ChatRequest, RefineRequest, ImageRequest, BudgetAnalysisRequest
 from ai_service.agents.travel_agent import TravelAgent
 from ai_service.ml_models.image_generator import generate_trip_image
 
@@ -55,4 +55,15 @@ async def create_image(req: ImageRequest):
     except Exception as e:
         logger.error(f"❌ Image Error: {e}")
         # Return None or error so the server can handle the fallback
+        raise HTTPException(status_code=500, detail=str(e))
+    
+@router.post("/analyze_budget")
+async def analyze_budget(req: BudgetAnalysisRequest):
+    logger.info(f"💰 Analyzing budget for: {req.destination}")
+    try:
+        agent = TravelAgent()
+        result = await agent.analyze_budget(req)
+        return result
+    except Exception as e:
+        logger.error(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

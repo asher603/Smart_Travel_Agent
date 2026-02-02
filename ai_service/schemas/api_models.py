@@ -1,6 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 
+# --- API Request Models --- #
 class TripRequest(BaseModel):
     destination: str
     origin: str
@@ -11,6 +12,31 @@ class TripRequest(BaseModel):
     email: Optional[str] = "user@example.com" 
     model: str = "gemini"
 
+class ChatRequest(BaseModel):
+    question: str
+    context: str
+    model: str = "gemini"
+
+class RefineRequest(BaseModel):
+    trip_id: Optional[str] = None
+    instructions: str
+    current_plan: Dict[str, Any]
+    model: str = "gemini"
+
+class BudgetAnalysisRequest(BaseModel):
+    destination: str
+    origin: str
+    duration: int
+    budget: str
+    currency: str
+    interest: str
+    model: str = "gemini"
+
+class ImageRequest(BaseModel):
+    destination: str
+    interest: str
+
+# --- API Response Models --- #
 class BudgetBreakdown(BaseModel):
     flights: int = Field(alias="Flights")
     accommodation: int = Field(alias="Accommodation")
@@ -28,18 +54,3 @@ class TripResponse(BaseModel):
     analyzed_vibe: str
     budget_breakdown: BudgetBreakdown
     itinerary: List[DayActivity]
-
-class ChatRequest(BaseModel):
-    question: str
-    context: str
-    model: str = "gemini"
-
-class RefineRequest(BaseModel):
-    trip_id: Optional[str] = None
-    instructions: str
-    current_plan: Dict[str, Any]
-    model: str = "gemini"
-
-class ImageRequest(BaseModel):
-    destination: str
-    interest: str

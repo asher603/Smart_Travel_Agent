@@ -928,7 +928,7 @@ class TripViewerView(QWidget):
             """)
             bc_layout.addWidget(fallback_lbl)
         
-        bw = BudgetWorker(self.api, plan_data.get("budget", "2000"))
+        bw = BudgetWorker(self.api, plan_data)
         currency = plan_data.get("currency", "USD")
         bw.finished_signal.connect(lambda res, c=current_chart, cur=currency: self.update_budget_chart(res, c, cur))
         self.start_worker(bw)
