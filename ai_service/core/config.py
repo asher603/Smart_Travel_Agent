@@ -25,6 +25,9 @@ class Settings(BaseSettings):
     
     HF_VIBE_MODEL: str = "facebook/bart-large-mnli"
     HF_IMAGE_MODEL: str = "black-forest-labs/FLUX.1-schnell"
+    HF_PROMPT_GUARD_MODEL: str = "meta-llama/Llama-Prompt-Guard-2-86M"
+    PROMPT_GUARD_ML_ENABLED: bool = True
+    PROMPT_GUARD_ML_THRESHOLD: float = 0.75
 
     class Config:
         # Tells Pydantic to read from .env file

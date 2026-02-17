@@ -7,8 +7,7 @@ Prompt Injection Protection Module
 1. Input Sanitization - ניקוי קלט מדפוסים מסוכנים
 2. Pattern Detection - זיהוי ניסיונות injection
 3. Input Boundaries - הגבלת אורך ותווים מותרים
-4. Structural Enforcement - הפרדה ברורה בין system ל-user
-"""
+4. Structural Enforcement - הפרדה ברורה בין system ל-user5. ML Detection - Llama Prompt Guard 2 (86M) for deep analysis"""
 
 import re
 import logging
@@ -125,7 +124,9 @@ class PromptGuard:
     
     def analyze_threat(self, text: str) -> Tuple[ThreatLevel, List[str]]:
         """
-        Analyze text for injection threats.
+        Analyze text for injection threats using dual-layer detection:
+        Layer 1: Regex pattern matching (fast, deterministic)
+        Layer 2: ML model classification (deep, probabilistic)
         
         Returns:
             Tuple of (threat_level, list_of_detected_patterns)
@@ -136,7 +137,7 @@ class PromptGuard:
         detected_threats = []
         text_lower = text.lower()
         
-        # Check for dangerous patterns
+        # === Layer 1: Regex Pattern Detection (fast) ===
         for pattern in self.compiled_patterns:
             if pattern.search(text):
                 detected_threats.append(f"Dangerous pattern: {pattern.pattern[:50]}...")
@@ -149,6 +150,11 @@ class PromptGuard:
         
         if suspicious_found:
             detected_threats.append(f"Suspicious keywords: {', '.join(suspicious_found[:3])}")
+        
+        # === Layer 2: ML Model Detection (deep) ===
+        ml_threat = self._check_ml_guard(text)
+        if ml_threat:
+            detected_threats.append(ml_threat)
         
         # Determine threat level based on findings
         if len(detected_threats) >= 3:
@@ -163,6 +169,29 @@ class PromptGuard:
             threat_level = ThreatLevel.SAFE
         
         return threat_level, detected_threats
+    
+    def _check_ml_guard(self, text: str) -> Optional[str]:
+        """
+        Check text using the ML Prompt Guard model.
+        Returns a threat description string if malicious, None if safe.
+        """
+        try:
+            from ai_service.core.config import settings
+            if not settings.PROMPT_GUARD_ML_ENABLED:
+                return None
+            
+            from ai_service.ml_models.prompt_guard_model import get_ml_prompt_guard
+            ml_guard = get_ml_prompt_guard()
+            
+            is_threat, label, confidence = ml_guard.is_malicious(text)
+            if is_threat:
+                return f"ML Guard: {label} (confidence: {confidence:.2%})"
+            
+            return None
+            
+        except Exception as e:
+            logger.debug(f"ML Guard check skipped: {e}")
+            return None
     
     def sanitize(self, text: str, field_name: str = "default") -> str:
         """
