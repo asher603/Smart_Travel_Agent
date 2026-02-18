@@ -11,7 +11,7 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, 
     QLineEdit, QComboBox, QScrollArea, QFrame, QSplitter, 
     QListWidget, QListWidgetItem, QDialog, QMessageBox, QFileDialog,
-    QGraphicsDropShadowEffect
+    QGraphicsDropShadowEffect, QCheckBox, QProgressBar
 )
 from PySide6.QtCore import Qt, Signal, QByteArray, QTimer
 from PySide6.QtGui import QPixmap, QColor
@@ -175,6 +175,9 @@ class TripViewerView(QWidget):
         self.current_context = ""
         self.current_image_b64 = None  # Store current trip image
         self.current_weather = None  # Store current weather
+        self.packing_checkboxes = []  # Packing list checkboxes
+        self.packing_progress_bar = None
+        self.packing_progress_label = None
 
         self.setup_ui()
         self.create_particles()
@@ -600,6 +603,9 @@ class TripViewerView(QWidget):
         self.trip_widgets_map = {}
         self.image_placeholders = {} 
         self.weather_labels = {}
+        self.packing_checkboxes = []
+        self.packing_progress_bar = None
+        self.packing_progress_label = None
         self.current_active_ver_id = None
 
         # Clear feed layout
@@ -991,6 +997,321 @@ class TripViewerView(QWidget):
             
             self.feed_layout.insertWidget(self.feed_layout.count()-1, day_card)
 
+        # ==================== HOTELS SECTION ====================
+        hotels = plan_data.get("hotels", [])
+        if hotels and isinstance(hotels, list):
+            hotels_header = QLabel("🏨 Recommended Hotels")
+            hotels_header.setStyleSheet("""
+                QLabel {
+                    font-size: 18px;
+                    font-weight: bold;
+                    color: white;
+                    margin-top: 18px;
+                    background: transparent;
+                    border: none;
+                }
+            """)
+            self.feed_layout.insertWidget(self.feed_layout.count()-1, hotels_header)
+
+            hotels_row = QHBoxLayout()
+            hotels_row.setSpacing(16)
+
+            # Tier styling: budget → mid → luxury
+            tier_styles = [
+                {"accent": "#10B981", "bg": "rgba(16,185,129,0.08)", "border": "#6EE7B7", "icon": "💚", "tier": "Budget Pick"},
+                {"accent": "#3B82F6", "bg": "rgba(59,130,246,0.08)", "border": "#93C5FD", "icon": "💙", "tier": "Best Value"},
+                {"accent": "#F59E0B", "bg": "rgba(245,158,11,0.08)", "border": "#FCD34D", "icon": "⭐", "tier": "Premium"},
+            ]
+
+            for idx, hotel in enumerate(hotels[:3]):
+                style = tier_styles[idx] if idx < len(tier_styles) else tier_styles[1]
+                hotel_card = GlassCard()
+                hotel_card.setMinimumHeight(260)
+                hc_layout = QVBoxLayout(hotel_card)
+                hc_layout.setContentsMargins(20, 18, 20, 18)
+                hc_layout.setSpacing(8)
+
+                # Tier badge
+                tier_badge = QLabel(f"{style['icon']} {style['tier']}")
+                tier_badge.setAlignment(Qt.AlignCenter)
+                tier_badge.setFixedHeight(26)
+                tier_badge.setStyleSheet(f"""
+                    QLabel {{
+                        background: {style['bg']};
+                        color: {style['accent']};
+                        border: 1px solid {style['border']};
+                        border-radius: 13px;
+                        font-size: 11px;
+                        font-weight: bold;
+                        letter-spacing: 0.5px;
+                    }}
+                """)
+                hc_layout.addWidget(tier_badge)
+
+                # Hotel name
+                name = hotel.get("name", "Hotel")
+                stars = hotel.get("stars", 0)
+                star_str = "★" * int(stars) + "☆" * (5 - int(stars))
+                name_lbl = QLabel(f"{name}")
+                name_lbl.setWordWrap(True)
+                name_lbl.setStyleSheet("""
+                    QLabel {
+                        font-size: 15px;
+                        font-weight: bold;
+                        color: #1E293B;
+                        background: transparent;
+                        border: none;
+                    }
+                """)
+                hc_layout.addWidget(name_lbl)
+
+                stars_lbl = QLabel(star_str)
+                stars_lbl.setStyleSheet(f"""
+                    QLabel {{
+                        font-size: 14px;
+                        color: {style['accent']};
+                        background: transparent;
+                        border: none;
+                        letter-spacing: 2px;
+                    }}
+                """)
+                hc_layout.addWidget(stars_lbl)
+
+                # Neighborhood
+                neighborhood = hotel.get("neighborhood", "")
+                if neighborhood:
+                    loc_lbl = QLabel(f"📍 {neighborhood}")
+                    loc_lbl.setStyleSheet("""
+                        QLabel {
+                            font-size: 12px;
+                            color: #64748B;
+                            background: transparent;
+                            border: none;
+                        }
+                    """)
+                    hc_layout.addWidget(loc_lbl)
+
+                # Price
+                price = hotel.get("price_per_night", 0)
+                currency = plan_data.get("currency", "USD")
+                price_lbl = QLabel(f"💰 {price} {currency} / night")
+                price_lbl.setStyleSheet(f"""
+                    QLabel {{
+                        font-size: 14px;
+                        font-weight: bold;
+                        color: {style['accent']};
+                        background: transparent;
+                        border: none;
+                        margin-top: 2px;
+                    }}
+                """)
+                hc_layout.addWidget(price_lbl)
+
+                # Highlights chips
+                highlights = hotel.get("highlights", [])
+                if highlights and isinstance(highlights, list):
+                    chips_text = "  •  ".join(highlights[:4])
+                    chips_lbl = QLabel(chips_text)
+                    chips_lbl.setWordWrap(True)
+                    chips_lbl.setStyleSheet("""
+                        QLabel {
+                            font-size: 11px;
+                            color: #475569;
+                            background: rgba(248, 250, 252, 0.8);
+                            border: 1px solid #E2E8F0;
+                            border-radius: 8px;
+                            padding: 6px 10px;
+                        }
+                    """)
+                    hc_layout.addWidget(chips_lbl)
+
+                # Why recommendation
+                why = hotel.get("why", "")
+                if why:
+                    why_lbl = QLabel(f"💡 {why}")
+                    why_lbl.setWordWrap(True)
+                    why_lbl.setStyleSheet("""
+                        QLabel {
+                            font-size: 11px;
+                            color: #64748B;
+                            font-style: italic;
+                            background: transparent;
+                            border: none;
+                            margin-top: 4px;
+                        }
+                    """)
+                    hc_layout.addWidget(why_lbl)
+
+                hc_layout.addStretch()
+                hotels_row.addWidget(hotel_card, 1)
+
+            self.feed_layout.insertLayout(self.feed_layout.count()-1, hotels_row)
+
+        # ==================== PACKING LIST SECTION ====================
+        packing_list = plan_data.get("packing_list", [])
+        if packing_list and isinstance(packing_list, list):
+            packing_header = QLabel("🎒 Packing List")
+            packing_header.setStyleSheet("""
+                QLabel {
+                    font-size: 18px;
+                    font-weight: bold;
+                    color: white;
+                    margin-top: 18px;
+                    background: transparent;
+                    border: none;
+                }
+            """)
+            self.feed_layout.insertWidget(self.feed_layout.count()-1, packing_header)
+
+            # Progress bar card
+            progress_card = GlassCard()
+            progress_layout = QVBoxLayout(progress_card)
+            progress_layout.setContentsMargins(24, 18, 24, 18)
+            progress_layout.setSpacing(10)
+
+            progress_title_row = QHBoxLayout()
+            progress_icon = QLabel("📦")
+            progress_icon.setStyleSheet("font-size: 20px; background: transparent; border: none;")
+            progress_title_row.addWidget(progress_icon)
+            progress_title_lbl = QLabel("Packing Progress")
+            progress_title_lbl.setStyleSheet("""
+                QLabel {
+                    font-size: 14px; font-weight: bold; color: #1E293B;
+                    background: transparent; border: none;
+                }
+            """)
+            progress_title_row.addWidget(progress_title_lbl)
+            progress_title_row.addStretch()
+            self.packing_progress_label = QLabel("0 / 0 packed")
+            self.packing_progress_label.setStyleSheet("""
+                QLabel {
+                    font-size: 13px; font-weight: 600; color: #3B82F6;
+                    background: transparent; border: none;
+                }
+            """)
+            progress_title_row.addWidget(self.packing_progress_label)
+            progress_layout.addLayout(progress_title_row)
+
+            self.packing_progress_bar = QProgressBar()
+            self.packing_progress_bar.setFixedHeight(14)
+            self.packing_progress_bar.setRange(0, 100)
+            self.packing_progress_bar.setValue(0)
+            self.packing_progress_bar.setTextVisible(False)
+            self.packing_progress_bar.setStyleSheet("""
+                QProgressBar {
+                    background: #E2E8F0;
+                    border: none;
+                    border-radius: 7px;
+                }
+                QProgressBar::chunk {
+                    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                        stop:0 #3B82F6, stop:0.5 #8B5CF6, stop:1 #10B981);
+                    border-radius: 7px;
+                }
+            """)
+            progress_layout.addWidget(self.packing_progress_bar)
+            self.feed_layout.insertWidget(self.feed_layout.count()-1, progress_card)
+
+            # Collect all checkboxes for progress tracking
+            self.packing_checkboxes = []
+
+            # Category colors
+            cat_colors = [
+                ("#3B82F6", "#EFF6FF", "#BFDBFE"),
+                ("#8B5CF6", "#F5F3FF", "#DDD6FE"),
+                ("#10B981", "#ECFDF5", "#A7F3D0"),
+                ("#F59E0B", "#FFFBEB", "#FDE68A"),
+                ("#EC4899", "#FDF2F8", "#FBCFE8"),
+                ("#06B6D4", "#ECFEFF", "#A5F3FC"),
+                ("#EF4444", "#FEF2F2", "#FECACA"),
+            ]
+
+            # Category icons
+            cat_icons = {
+                "clothing": "👕", "toiletries": "🧴", "electronics": "📱",
+                "documents": "📄", "accessories": "🎒", "health": "💊",
+                "gear": "⛺", "footwear": "👟", "food": "🍫",
+                "entertainment": "🎧", "misc": "📦",
+            }
+
+            # Build 2-column layout for categories
+            cat_row = None
+            for cat_idx, category in enumerate(packing_list):
+                if cat_idx % 2 == 0:
+                    cat_row = QHBoxLayout()
+                    cat_row.setSpacing(16)
+
+                colors = cat_colors[cat_idx % len(cat_colors)]
+                cat_name = category.get("category", "Items")
+                items = category.get("items", [])
+                icon = cat_icons.get(cat_name.lower(), "📋")
+
+                cat_card = GlassCard()
+                cat_card.setMinimumHeight(120)
+                cc_layout = QVBoxLayout(cat_card)
+                cc_layout.setContentsMargins(18, 14, 18, 14)
+                cc_layout.setSpacing(6)
+
+                # Category header with colored badge
+                cat_header = QLabel(f"{icon} {cat_name}")
+                cat_header.setStyleSheet(f"""
+                    QLabel {{
+                        font-size: 14px;
+                        font-weight: bold;
+                        color: {colors[0]};
+                        background: {colors[1]};
+                        border: 1px solid {colors[2]};
+                        border-radius: 10px;
+                        padding: 5px 12px;
+                    }}
+                """)
+                cc_layout.addWidget(cat_header)
+
+                # Items with checkboxes
+                for item in items:
+                    cb = QCheckBox(str(item))
+                    cb.setStyleSheet(f"""
+                        QCheckBox {{
+                            font-size: 13px;
+                            color: #334155;
+                            spacing: 8px;
+                            padding: 3px 0;
+                            background: transparent;
+                        }}
+                        QCheckBox::indicator {{
+                            width: 18px;
+                            height: 18px;
+                            border: 2px solid {colors[2]};
+                            border-radius: 4px;
+                            background: white;
+                        }}
+                        QCheckBox::indicator:checked {{
+                            background: {colors[0]};
+                            border-color: {colors[0]};
+                            image: none;
+                        }}
+                        QCheckBox::indicator:hover {{
+                            border-color: {colors[0]};
+                        }}
+                    """)
+                    cb.stateChanged.connect(self._update_packing_progress)
+                    self.packing_checkboxes.append(cb)
+                    cc_layout.addWidget(cb)
+
+                cc_layout.addStretch()
+                cat_row.addWidget(cat_card, 1)
+
+                # Add row every 2 cards or at the end
+                if cat_idx % 2 == 1 or cat_idx == len(packing_list) - 1:
+                    if cat_idx % 2 == 0:
+                        cat_row.addStretch(1)  # fill second spot if odd count
+                    self.feed_layout.insertLayout(self.feed_layout.count()-1, cat_row)
+
+            # Initialize progress
+            total = len(self.packing_checkboxes)
+            self.packing_progress_label.setText(f"0 / {total} packed")
+            self.packing_progress_bar.setValue(0)
+
         # Save state if needed
         if save and not self.is_loading_mode:
             self.chat_history_state.append({
@@ -1015,6 +1336,38 @@ class TripViewerView(QWidget):
                 clean_data[category] = int(match.group(1))
         
         chart_widget.update_data(clean_data, currency)
+
+    # ============================================================================
+    #                           PACKING PROGRESS
+    # ============================================================================
+
+    def _update_packing_progress(self):
+        """Update packing progress bar when a checkbox is toggled"""
+        if not self.packing_checkboxes:
+            return
+        total = len(self.packing_checkboxes)
+        checked = sum(1 for cb in self.packing_checkboxes if cb.isChecked())
+        pct = int((checked / total) * 100) if total > 0 else 0
+        
+        if self.packing_progress_bar:
+            self.packing_progress_bar.setValue(pct)
+        if self.packing_progress_label:
+            if checked == total:
+                self.packing_progress_label.setText(f"✅ All {total} items packed!")
+                self.packing_progress_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 13px; font-weight: 600; color: #10B981;
+                        background: transparent; border: none;
+                    }
+                """)
+            else:
+                self.packing_progress_label.setText(f"{checked} / {total} packed")
+                self.packing_progress_label.setStyleSheet("""
+                    QLabel {
+                        font-size: 13px; font-weight: 600; color: #3B82F6;
+                        background: transparent; border: none;
+                    }
+                """)
 
     # ============================================================================
     #                           IMAGE GENERATION

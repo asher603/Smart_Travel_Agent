@@ -619,22 +619,35 @@ class TripFormView(QWidget):
         budget_layout.addLayout(budget_row)
         left_col.addWidget(budget_card)
         
-        # AI Model Card
-        model_card = self._card()
-        model_layout = QHBoxLayout(model_card)
-        model_layout.setContentsMargins(28, 20, 28, 20)
-        
+        # Traveler Card (Gender + AI Model)
+        traveler_card = self._card()
+        traveler_layout = QVBoxLayout(traveler_card)
+        traveler_layout.setContentsMargins(28, 20, 28, 20)
+        traveler_layout.setSpacing(14)
+
+        # Gender row
+        gender_row = QHBoxLayout()
+        gender_lbl = QLabel("👤 Traveler")
+        gender_lbl.setStyleSheet("color: #1E293B; font-size: 15px; font-weight: 700;")
+        gender_row.addWidget(gender_lbl)
+        gender_row.addStretch()
+        self.combo_gender = self._combo(["Male", "Female"])
+        self.combo_gender.setFixedWidth(120)
+        gender_row.addWidget(self.combo_gender)
+        traveler_layout.addLayout(gender_row)
+
+        # AI Model row
+        model_row = QHBoxLayout()
         model_title = QLabel("🤖 AI Model")
         model_title.setStyleSheet("color: #1E293B; font-size: 15px; font-weight: 700;")
-        model_layout.addWidget(model_title)
-        
-        model_layout.addStretch()
-        
+        model_row.addWidget(model_title)
+        model_row.addStretch()
         self.combo_model = self._combo(["Gemini", "Groq", "Ollama"])
         self.combo_model.setFixedWidth(120)
-        model_layout.addWidget(self.combo_model)
-        
-        left_col.addWidget(model_card)
+        model_row.addWidget(self.combo_model)
+        traveler_layout.addLayout(model_row)
+
+        left_col.addWidget(traveler_card)
         left_col.addStretch()
         
         content_layout.addLayout(left_col, 1)
@@ -845,7 +858,8 @@ class TripFormView(QWidget):
             "interests": ", ".join(selected),
             "start_date": self.date_picker.start_date.toString("yyyy-MM-dd"),
             "end_date": self.date_picker.end_date.toString("yyyy-MM-dd"),
-            "model": self.combo_model.currentText().lower()
+            "model": self.combo_model.currentText().lower(),
+            "gender": self.combo_gender.currentText().lower()
         }
         self.generate_requested.emit(data)
 

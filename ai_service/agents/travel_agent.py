@@ -98,8 +98,27 @@ You are a precise JSON-speaking travel agent. Modify the plan based on instructi
              {{
                 "summary": "...",
                 "budget_breakdown": {{ ... }},
-                "itinerary": [ ... ]
+                "itinerary": [ ... ],
+                "hotels": [
+                    {{
+                        "name": "Hotel Name",
+                        "stars": 4,
+                        "price_per_night": 120,
+                        "neighborhood": "City Center",
+                        "highlights": ["Free WiFi", "Pool"],
+                        "why": "Short reason"
+                    }}
+                ],
+                "packing_list": [
+                    {{
+                        "category": "Clothing",
+                        "items": ["T-shirts x3", "Jeans x2"]
+                    }}
+                ]
              }}
+             
+             HOTEL RULES: Keep exactly 3 hotels (budget, mid-range, luxury). Use real hotel names.
+             PACKING LIST RULES: Keep 5-7 categories with 3-6 items each. Tailor to destination, duration, interests, and gender.
              """)
         ])
 
@@ -171,6 +190,7 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
              Budget: {budget} {currency}.
              Interests: {interest}.
              Vibe: {vibe}.
+             Traveler gender: {gender}.
              {enrichment}
              
              IMPORTANT: Return ONLY valid JSON. No markdown formatting, no explanations.
@@ -179,8 +199,39 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
              {{
                 "summary": "...",
                 "budget_breakdown": {{ "Flights": 0, "Accommodation": 0, "Food": 0, "Activities": 0, "Transport": 0 }},
-                "itinerary": [ {{ "day": 1, "title": "...", "activities": ["..."] }} ]
+                "itinerary": [ {{ "day": 1, "title": "...", "activities": ["..."] }} ],
+                "hotels": [
+                    {{
+                        "name": "Hotel Name",
+                        "stars": 4,
+                        "price_per_night": 120,
+                        "neighborhood": "City Center",
+                        "highlights": ["Free WiFi", "Pool", "Near attractions"],
+                        "why": "Short reason why this hotel fits the traveler's preferences"
+                    }}
+                ],
+                "packing_list": [
+                    {{
+                        "category": "Clothing",
+                        "items": ["T-shirts x3", "Jeans x2", "Jacket"]
+                    }}
+                ]
              }}
+             
+             HOTEL RULES:
+             - Recommend exactly 3 hotels at different price tiers (budget, mid-range, luxury) that fit the total budget.
+             - Hotels must be real, well-known hotels in the destination city.
+             - Consider the traveler's interests and vibe when choosing hotels.
+             - price_per_night should be a realistic integer in the trip currency.
+             - stars should be 1-5.
+             
+             PACKING LIST RULES:
+             - Create a practical packing list with 5-7 categories (e.g. Clothing, Toiletries, Electronics, Documents, Accessories, Health, Gear).
+             - Each category should have 3-6 specific items.
+             - Items MUST be tailored to: destination weather, trip duration, traveler interests, AND traveler gender ({gender}).
+             - For gender-specific items, recommend appropriate clothing and toiletries.
+             - If activities like hiking, beach, or sports are planned, include relevant gear.
+             - Include travel documents and essentials.
              """)
         ])
 
@@ -192,7 +243,8 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
             currency=req.currency, 
             interest=prompt_guard.wrap_user_input(sanitized["interests"]),
             vibe=analyzed_vibe,
-            enrichment=enrichment_text
+            enrichment=enrichment_text,
+            gender=req.gender
         )
         
         try:

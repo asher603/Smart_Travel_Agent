@@ -77,7 +77,8 @@ class TripFormPresenter(QObject):
             "end_date": data.get("end_date"),
             "username": self.model.username or "guest",
             "email": self.model.email or "user@example.com",
-            "model": data.get("model", "gemini")
+            "model": data.get("model", "gemini"),
+            "gender": data.get("gender", "male")
         }
 
         # 3. Start Background Worker

@@ -27,6 +27,7 @@ class GenerateTripRequest(BaseModel):
     end_date: str
     username: Optional[str] = "guest"
     model: Optional[str] = "gemini"
+    gender: Optional[str] = "male"
 
 class RefineTripRequest(BaseModel):
     """
@@ -131,7 +132,8 @@ async def generate_trip(req: GenerateTripRequest):
             "start_date": req.start_date,
             "end_date": req.end_date,
             "model": req.model,
-            "email": user_email  # <--- Injected email here
+            "email": user_email,  # <--- Injected email here
+            "gender": req.gender or "male"
         }
 
         # A. Call AI Service

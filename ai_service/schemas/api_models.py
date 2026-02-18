@@ -11,6 +11,7 @@ class TripRequest(BaseModel):
     interest: str
     email: Optional[str] = "user@example.com" 
     model: str = "gemini"
+    gender: str = "male"
 
 class ChatRequest(BaseModel):
     question: str

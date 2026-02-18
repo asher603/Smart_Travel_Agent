@@ -362,6 +362,72 @@ def create_itinerary(itinerary):
     return elements
 
 
+def create_hotels_section(hotels, currency="USD"):
+    """Create recommended hotels section"""
+    if not hotels or not isinstance(hotels, list):
+        return []
+
+    styles = get_styles()
+    elements = []
+
+    elements.append(Paragraph("🏨 Recommended Hotels", styles['SectionHeader']))
+    elements.append(Spacer(1, 6))
+
+    tier_colors = [Colors.SUCCESS, Colors.PRIMARY, colors.HexColor("#F59E0B")]
+    tier_labels = ["Budget Pick", "Best Value", "Premium"]
+
+    for idx, hotel in enumerate(hotels[:3]):
+        accent = tier_colors[idx] if idx < len(tier_colors) else Colors.PRIMARY
+        tier = tier_labels[idx] if idx < len(tier_labels) else "Hotel"
+
+        name = hotel.get("name", "Hotel")
+        stars = hotel.get("stars", 0)
+        star_str = "★" * int(stars) + "☆" * (5 - int(stars))
+        neighborhood = hotel.get("neighborhood", "")
+        price = hotel.get("price_per_night", 0)
+        highlights = hotel.get("highlights", [])
+        why = hotel.get("why", "")
+
+        # Build hotel info rows
+        info_parts = []
+        info_parts.append(f"<font size='7' color='#64748B'><b>{tier}</b></font>")
+        info_parts.append(f"<font size='13' color='#1E293B'><b>{name}</b></font>")
+        info_parts.append(f"<font size='11' color='{accent.hexval()}'>{star_str}</font>")
+
+        if neighborhood:
+            info_parts.append(f"<font size='10' color='#64748B'>📍 {neighborhood}</font>")
+
+        info_parts.append(
+            f"<font size='11' color='{accent.hexval()}'><b>💰 {price} {currency} / night</b></font>"
+        )
+
+        if highlights:
+            chips = "  •  ".join(h for h in highlights[:4])
+            info_parts.append(f"<font size='9' color='#475569'>{chips}</font>")
+
+        if why:
+            info_parts.append(f"<font size='9' color='#64748B'><i>💡 {why}</i></font>")
+
+        cell_content = "<br/>".join(info_parts)
+
+        row_table = Table(
+            [[Paragraph(cell_content, ParagraphStyle('HotelCell', leading=16))]],
+            colWidths=[16.5 * cm],
+        )
+        row_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, -1), Colors.BG_LIGHT),
+            ('BOX', (0, 0), (-1, -1), 1, accent),
+            ('LEFTPADDING', (0, 0), (-1, -1), 15),
+            ('RIGHTPADDING', (0, 0), (-1, -1), 15),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+        ]))
+
+        elements.append(KeepTogether([row_table, Spacer(1, 10)]))
+
+    return elements
+
+
 def create_footer():
     """Create document footer"""
     styles = get_styles()
@@ -375,6 +441,92 @@ def create_footer():
     elements.append(Spacer(1, 3))
     elements.append(Paragraph("🤖 Powered by AI  •  Have a wonderful trip! ✨", styles['SmallText']))
     
+    return elements
+
+
+def create_packing_list_section(packing_list):
+    """Create packing list section with categories and items"""
+    if not packing_list or not isinstance(packing_list, list):
+        return []
+
+    styles = get_styles()
+    elements = []
+
+    elements.append(Paragraph("🎒 Packing List", styles['SectionHeader']))
+    elements.append(Spacer(1, 6))
+
+    cat_icons = {
+        "clothing": "👕", "toiletries": "🧴", "electronics": "📱",
+        "documents": "📄", "accessories": "🎒", "health": "💊",
+        "gear": "⛺", "footwear": "👟", "food": "🍫",
+        "entertainment": "🎧", "misc": "📦",
+    }
+
+    cat_colors_cycle = [
+        Colors.PRIMARY, Colors.ACCENT, Colors.SUCCESS,
+        colors.HexColor("#F59E0B"), colors.HexColor("#EC4899"),
+        colors.HexColor("#06B6D4"), colors.HexColor("#EF4444"),
+    ]
+
+    for idx, category in enumerate(packing_list):
+        cat_name = category.get("category", "Items")
+        items = category.get("items", [])
+        icon = cat_icons.get(cat_name.lower(), "📋")
+        accent = cat_colors_cycle[idx % len(cat_colors_cycle)]
+
+        # Build item rows with checkbox squares
+        item_rows = []
+        for item in items:
+            item_rows.append([Paragraph(
+                f"<font color='{accent.hexval()}'>☐</font>  {item}",
+                styles['ActivityText']
+            )])
+
+        # Category header
+        header = Table([[
+            Paragraph(
+                f"<font size='12' color='white'><b>{icon}</b></font>",
+                ParagraphStyle('CatIcon', alignment=TA_CENTER)
+            ),
+            Paragraph(
+                f"<font size='11' color='#1E40AF'><b>{cat_name}</b></font>",
+                ParagraphStyle('CatName', alignment=TA_LEFT, leftIndent=10)
+            ),
+            Paragraph(
+                f"<font size='9' color='#64748B'>{len(items)} items</font>",
+                ParagraphStyle('CatCount', alignment=TA_LEFT)
+            ),
+        ]], colWidths=[1.5*cm, 10*cm, 5*cm])
+
+        header.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, 0), accent),
+            ('BACKGROUND', (1, 0), (-1, 0), Colors.PRIMARY_LIGHT),
+            ('ALIGN', (0, 0), (0, 0), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING', (0, 0), (-1, -1), 8),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 8),
+            ('LEFTPADDING', (1, 0), (1, 0), 12),
+        ]))
+
+        if item_rows:
+            items_table = Table(item_rows, colWidths=[16.5*cm])
+            items_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, -1), Colors.BG_WHITE),
+                ('TOPPADDING', (0, 0), (-1, -1), 2),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+                ('LEFTPADDING', (0, 0), (-1, -1), 15),
+            ]))
+        else:
+            items_table = Spacer(1, 5)
+
+        card = Table([[header], [items_table]], colWidths=[16.5*cm])
+        card.setStyle(TableStyle([
+            ('BOX', (0, 0), (-1, -1), 1, Colors.BORDER),
+            ('BOTTOMPADDING', (0, 1), (-1, 1), 8),
+        ]))
+
+        elements.append(KeepTogether([card, Spacer(1, 10)]))
+
     return elements
 
 
@@ -402,6 +554,8 @@ def generate_trip_pdf(trip_data, filename, image_base64=None, weather_info=None)
     summary = trip_data.get("summary", "")
     budget_breakdown = trip_data.get("budget_breakdown", {})
     itinerary = trip_data.get("itinerary", [])
+    hotels = trip_data.get("hotels", [])
+    packing_list = trip_data.get("packing_list", [])
     currency = trip_data.get("currency", "USD")
     
     # ==================== BUILD PDF ====================
@@ -448,6 +602,12 @@ def generate_trip_pdf(trip_data, filename, image_base64=None, weather_info=None)
     
     # Itinerary
     story.extend(create_itinerary(itinerary))
+    
+    # Hotels
+    story.extend(create_hotels_section(hotels, currency))
+    
+    # Packing List
+    story.extend(create_packing_list_section(packing_list))
     
     # Footer
     story.extend(create_footer())
