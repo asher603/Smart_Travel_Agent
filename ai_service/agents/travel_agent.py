@@ -192,6 +192,11 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
                 logger.warning(f"⚠️ Standard parsing failed, attempting raw json load.")
                 result = json.loads(cleaned_content)
 
+            if not isinstance(result, dict):
+                # Critical Fail - Log the bad content
+                logger.error(f"❌ AI did not return a dictionary. Raw content:\n{cleaned_content[:500]}...")
+                raise ValueError("AI returned invalid format (not a dictionary)")
+
             result["analyzed_vibe"] = analyzed_vibe
 
             # --- n8n Automation (Fire & Forget) ---
