@@ -1,7 +1,8 @@
 from fastapi import FastAPI
 from ai_service.api.endpoints import router as api_router
+from ai_service.core.events import lifespan
 
-app = FastAPI(title="AI Service")
+app = FastAPI(title="AI Service", lifespan=lifespan)
 
 # Health check endpoint
 @app.get("/health")
