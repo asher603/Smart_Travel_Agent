@@ -20,11 +20,14 @@ def create_trip(payload: dict):
     # Use server-provided trip_id if available, otherwise generate new
     trip_id = payload.get("trip_id") or str(uuid.uuid4())
     
+    initial_request = payload.get("initial_request", payload)
+    initial_request["generated_plan"] = payload.get("generated_plan", {})
+
     event = TripCreated(
         trip_id=trip_id,
         username=payload["username"],
         destination=payload["destination"],
-        initial_request=payload.get("initial_request", payload)
+        initial_request=initial_request
     )
     store.append(event)
     return {"trip_id": trip_id}
