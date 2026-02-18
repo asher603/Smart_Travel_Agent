@@ -1528,9 +1528,17 @@ class TripViewerView(QWidget):
     def on_refine_done(self, res, msg):
         """Handle refine completion"""
         if res and "trip_plan" in res:
-            self.current_plan_data = res["trip_plan"]
-            self.current_context = json.dumps(res["trip_plan"], default=str, indent=2)
-            self.render_trip_block(f"🛠️ {msg[:30]}...", res["trip_plan"], is_new=True)
+            plan = res["trip_plan"]
+            self.current_plan_data = plan
+            self.current_context = json.dumps(plan, default=str, indent=2)
+            self.render_trip_block(f"🛠️ {msg[:30]}...", plan, is_new=True)
+
+            # Trigger image generation for the refined plan
+            dest = plan.get("destination", "")
+            interest = plan.get("interests", plan.get("interest", "travel"))
+            if dest:
+                self.trigger_image_generation(dest, interest, self.trip_counter)
+                self.fetch_weather(dest)
         else:
             self.add_bubble("❌ Failed to refine plan. Please try again.", False)
 

@@ -147,6 +147,25 @@ You are a precise JSON-speaking travel agent. Modify the plan based on instructi
                     logger.error(f"❌ Failed to parse AI response. Raw content:\n{cleaned_content[:500]}...")
                     raise ValueError("AI returned invalid format.")
 
+            # --- n8n Automation for refined plan (Fire & Forget) ---
+            if result and "itinerary" in result and req.email:
+                # Build a minimal TripRequest-like object for _trigger_automation
+                dest = req.current_plan.get("destination", "Unknown")
+                origin = req.current_plan.get("origin", "Unknown")
+                itinerary = result.get("itinerary", [])
+                duration = len(itinerary) if itinerary else 5
+                mock_req = TripRequest(
+                    destination=dest,
+                    origin=origin,
+                    duration=duration,
+                    budget=int(req.current_plan.get("budget", 2000)),
+                    currency=req.current_plan.get("currency", "USD"),
+                    interest=req.current_plan.get("interests", "General"),
+                    email=req.email,
+                    model=req.model
+                )
+                asyncio.create_task(self._trigger_automation(result, mock_req))
+
             return result
             
         except Exception as e:

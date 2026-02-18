@@ -213,9 +213,33 @@ async def refine_trip(req: RefineTripRequest):
     
     async with httpx.AsyncClient() as client:
         try:
+            # Fetch user email for automation (same as generate flow)
+            user_email = None
+            try:
+                snap_resp = await client.get(
+                    f"{settings.DATA_SERVICE_URL}/trips/{req.trip_id}",
+                    timeout=2.0
+                )
+                if snap_resp.status_code == 200:
+                    username = snap_resp.json().get("username", "")
+                    if username and username.lower() != "guest":
+                        profile_resp = await client.post(
+                            f"{settings.DATA_SERVICE_URL}/users/get_profile",
+                            json={"username": username},
+                            timeout=2.0
+                        )
+                        if profile_resp.status_code == 200:
+                            user_email = profile_resp.json().get("email")
+            except Exception as e:
+                print(f"⚠️ Could not fetch email for refine automation: {e}")
+
+            # Build AI payload with email for automation
+            ai_payload = req.model_dump()
+            ai_payload["email"] = user_email
+
             ai_resp = await client.post(
                 f"{settings.AI_SERVICE_URL}/refine",
-                json=req.model_dump(),
+                json=ai_payload,
                 timeout=300.0
             )
             
@@ -223,8 +247,16 @@ async def refine_trip(req: RefineTripRequest):
                 raise HTTPException(status_code=ai_resp.status_code, detail=f"AI Error: {ai_resp.text}")
 
             refined_plan = ai_resp.json()
+
+            # Inject metadata from the original plan so the client has all fields
+            for key in ["origin", "destination", "start_date", "budget", "currency", "trip_id"]:
+                if key not in refined_plan and key in req.current_plan:
+                    refined_plan[key] = req.current_plan[key]
+
             return {"status": "success", "trip_plan": refined_plan}
 
+        except HTTPException:
+            raise
         except Exception as e:
             print(f"❌ Refine Error: {e}")
             raise HTTPException(status_code=500, detail=str(e))

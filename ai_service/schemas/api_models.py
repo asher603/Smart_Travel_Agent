@@ -23,6 +23,7 @@ class RefineRequest(BaseModel):
     instructions: str
     current_plan: Dict[str, Any]
     model: str = "gemini"
+    email: Optional[str] = None
 
 class BudgetAnalysisRequest(BaseModel):
     destination: str
