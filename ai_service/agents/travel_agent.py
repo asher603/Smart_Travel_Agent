@@ -196,7 +196,7 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
 
             # --- n8n Automation (Fire & Forget) ---
             # Run in background to avoid blocking response
-            if result and "itinerary" in result:
+            if result and "itinerary" in result and req.email:
                 asyncio.create_task(self._trigger_automation(result, req))
 
             return result
@@ -270,7 +270,13 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
             end_date_obj = start_date_obj + timedelta(days=req.duration)
             
             # Extract email from request (fallback to default)
-            user_email = req.email if req.email else "user@example.com"
+            user_email = req.email
+
+            # this check is just to make sure, we alredy cheak before calling this function, but just in case to prevent any issues with n8n
+            if not user_email:
+                logger.warning("⚠️ No email provided in request, not sending to n8n.")
+                return
+            
             payload = {
                 "email": user_email,
                 "summary": f"Trip to {req.destination}: {trip_data.get('summary', '')[:200]}...",

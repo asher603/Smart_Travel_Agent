@@ -97,7 +97,7 @@ async def generate_trip(req: GenerateTripRequest):
         # ---------------------------------------------------------
         # We attempt to fetch the user's email from the profile service
         # so the AI service can pass it to the automation workflow.
-        user_email = "user@example.com" # Default fallback
+        user_email = None # Default fallback
         
         if req.username and req.username.lower() != "guest":
             try:
