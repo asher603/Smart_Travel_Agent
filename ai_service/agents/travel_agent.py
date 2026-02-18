@@ -147,7 +147,20 @@ You are a precise JSON-speaking travel agent. Modify the plan based on instructi
                 "budget_breakdown": {},
                 "analyzed_vibe": "Error"
             }
-        
+
+        # --- MCP Tool Enrichment (Real-time flight & weather data) ---
+        start_date = (datetime.now() + timedelta(days=7)).strftime("%Y-%m-%d")
+        enrichment = await self._get_mcp_enrichment(
+            origin=sanitized["origin"],
+            destination=sanitized["destination"],
+            date=start_date
+        )
+        enrichment_text = ""
+        if enrichment.get("flights"):
+            enrichment_text += f"\n\nReal-time Flight Data (from MCP tools):\n{enrichment['flights']}"
+        if enrichment.get("weather"):
+            enrichment_text += f"\n\nCurrent Weather at Destination (from MCP tools):\n{enrichment['weather']}"
+
         # Prompt Setup:
         parser = JsonOutputParser()
         prompt = ChatPromptTemplate.from_messages([
@@ -158,8 +171,10 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
              Budget: {budget} {currency}.
              Interests: {interest}.
              Vibe: {vibe}.
+             {enrichment}
              
              IMPORTANT: Return ONLY valid JSON. No markdown formatting, no explanations.
+             Use the real-time data above (if available) to make the plan more accurate.
              Structure:
              {{
                 "summary": "...",
@@ -176,7 +191,8 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
             budget=req.budget, 
             currency=req.currency, 
             interest=prompt_guard.wrap_user_input(sanitized["interests"]),
-            vibe=analyzed_vibe
+            vibe=analyzed_vibe,
+            enrichment=enrichment_text
         )
         
         try:
@@ -315,14 +331,86 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
         
         return json_str
 
+    async def _get_mcp_enrichment(self, origin: str, destination: str, date: str) -> Dict[str, Optional[str]]:
+        """
+        Connects to MCP server via SSE, discovers available tools dynamically,
+        and invokes them to fetch real-time flight & weather data.
+        Returns enrichment data dict to enhance the AI planning prompt.
+        Gracefully degrades if MCP server is unavailable.
+        """
+        enrichment: Dict[str, Optional[str]] = {"flights": None, "weather": None}
+        try:
+            enrichment = await asyncio.wait_for(
+                self._invoke_mcp_tools(origin, destination, date),
+                timeout=15.0
+            )
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ MCP Server connection timed out — proceeding without enrichment")
+        except Exception as e:
+            logger.warning(f"⚠️ MCP Server unavailable ({e}) — proceeding without enrichment")
+
+        return enrichment
+
+    async def _invoke_mcp_tools(self, origin: str, destination: str, date: str) -> Dict[str, Optional[str]]:
+        """Internal helper: connects to MCP, discovers tools, and calls them."""
+        enrichment: Dict[str, Optional[str]] = {"flights": None, "weather": None}
+        async with sse_client(self.mcp_url) as streams:
+            async with ClientSession(streams[0], streams[1]) as session:
+                await session.initialize()
+
+                # Dynamic tool discovery
+                tools_result = await session.list_tools()
+                tool_names = [t.name for t in tools_result.tools]
+                logger.info(f"🔌 MCP Tools discovered: {tool_names}")
+
+                # Invoke flight search if available
+                if "search_flights" in tool_names:
+                    try:
+                        flight_result = await session.call_tool(
+                            "search_flights",
+                            arguments={"origin": origin, "destination": destination, "date": date}
+                        )
+                        if flight_result.content:
+                            enrichment["flights"] = str(flight_result.content[0].text)
+                            logger.info("✈️ MCP flight data retrieved successfully")
+                    except Exception as e:
+                        logger.warning(f"⚠️ MCP flight tool error: {e}")
+
+                # Invoke weather tool if available
+                if "get_weather" in tool_names:
+                    try:
+                        weather_result = await session.call_tool(
+                            "get_weather",
+                            arguments={"city": destination}
+                        )
+                        if weather_result.content:
+                            enrichment["weather"] = str(weather_result.content[0].text)
+                            logger.info("🌤️ MCP weather data retrieved successfully")
+                    except Exception as e:
+                        logger.warning(f"⚠️ MCP weather tool error: {e}")
+
+        return enrichment
+
     async def _fetch_mcp_tools(self) -> List[BaseTool]:
         """
-        Connects to MCP server manually using the official SDK.
+        Connects to MCP server and wraps discovered tools as LangChain StructuredTools.
+        Used for LangChain Agent Executor integration (tool-calling agents).
         """
         lc_tools = []
         try:
-            async with asyncio.timeout(3.0):
-                async with sse_client(self.mcp_url) as streams:
+            return await asyncio.wait_for(self._fetch_mcp_tools_inner(), timeout=3.0)
+        except asyncio.TimeoutError:
+            logger.warning("⚠️ MCP tool fetch timed out")
+            return []
+        except Exception as e:
+            logger.warning(f"⚠️ Could not connect to MCP Server: {e}")
+            return []
+
+    async def _fetch_mcp_tools_inner(self) -> List[BaseTool]:
+        """Internal helper for _fetch_mcp_tools."""
+        lc_tools = []
+        try:
+            async with sse_client(self.mcp_url) as streams:
                     async with ClientSession(streams[0], streams[1]) as session:
                         await session.initialize()
                         result = await session.list_tools()
@@ -340,5 +428,5 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
                         logger.info(f"✅ Successfully loaded {len(lc_tools)} MCP tools")
                         return lc_tools
         except Exception as e:
-            logger.warning(f"⚠️ Could not connect to MCP Server: {e}")
+            logger.warning(f"⚠️ MCP tools inner error: {e}")
             return []

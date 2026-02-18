@@ -74,6 +74,8 @@ services:
       - HF_TOKEN=${HF_TOKEN}
       - HUGGINGFACE_API_KEY=${HF_TOKEN}
       - OLLAMA_BASE_URL=http://ollama:11434
+      - AMADEUS_API_KEY=${AMADEUS_API_KEY}
+      - AMADEUS_SECRET=${AMADEUS_SECRET}
     ports:
       - "8003:8000"
 
