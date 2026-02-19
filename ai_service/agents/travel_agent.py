@@ -390,15 +390,16 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
         Strips Markdown code fences (```json) from AI responses
         to prevent JSON parser failures.
         """
-        pattern = r"```json(.*?)```"
+        pattern = r"```(?:json|JSON)?\s*(.*?)\s*```"
         match = re.search(pattern, json_str, re.DOTALL)
+
         if match:
-            json_str = match.group(1).strip()
-        else:
-            start = json_str.find("{")
-            end = json_str.rfind("}")
-            if start != -1 and end != -1:
-                json_str = json_str[start : end + 1]
+            return match.group(1).strip()
+        
+        start = json_str.find("{")
+        end = json_str.rfind("}")
+        if start != -1 and end != -1:
+            return json_str[start : end + 1]
         
         return json_str
 
