@@ -5,12 +5,11 @@ import json
 import ast
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
-
+from contextlib import AsyncExitStack
 import httpx
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.tools import BaseTool, StructuredTool
-
 # MCP Imports
 from mcp import ClientSession
 from mcp.client.sse import sse_client
@@ -32,8 +31,11 @@ class TravelAgent:
     
     def __init__(self):
         self.manager = llm_manager
-        # MCP server endpoint (Docker internal network)
         self.mcp_url = "http://mcp-server:8000/sse"
+        self._mcp_session = None
+        self._mcp_exit_stack = None
+        self._mcp_tools_cache = []
+        self._mcp_lock = asyncio.Lock()
 
     async def answer_question(self, req: ChatRequest) -> Dict[str, str]:
         """
@@ -424,42 +426,48 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
         return enrichment
 
     async def _invoke_mcp_tools(self, origin: str, destination: str, date: str) -> Dict[str, Optional[str]]:
-        """Internal helper: connects to MCP, discovers tools, and calls them."""
+        """Internal helper: uses persistent MCP connection to call tools."""
         enrichment: Dict[str, Optional[str]] = {"flights": None, "weather": None}
-        async with sse_client(self.mcp_url) as streams:
-            async with ClientSession(streams[0], streams[1]) as session:
-                await session.initialize()
+        
+        try:
+            session, cached_tools = await asyncio.wait_for(self._get_mcp_session(), timeout=5.0)
+            tool_names = [t.name for t in cached_tools]
+        except Exception as e:
+            logger.warning(f"⚠️ Could not establish MCP session: {e}")
+            return enrichment
 
-                # Dynamic tool discovery
-                tools_result = await session.list_tools()
-                tool_names = [t.name for t in tools_result.tools]
-                logger.info(f"🔌 MCP Tools discovered: {tool_names}")
+        try:
+            # Invoke flight search if available
+            if "search_flights" in tool_names:
+                try:
+                    flight_result = await session.call_tool(
+                        "search_flights",
+                        arguments={"origin": origin, "destination": destination, "date": date}
+                    )
+                    if flight_result.content:
+                        enrichment["flights"] = str(flight_result.content[0].text)
+                        logger.info("✈️ MCP flight data retrieved successfully")
+                except Exception as e:
+                    logger.warning(f"⚠️ MCP flight tool error: {e}")
+                    await self._close_mcp_connection() # Trigger reconnect next time
 
-                # Invoke flight search if available
-                if "search_flights" in tool_names:
-                    try:
-                        flight_result = await session.call_tool(
-                            "search_flights",
-                            arguments={"origin": origin, "destination": destination, "date": date}
-                        )
-                        if flight_result.content:
-                            enrichment["flights"] = str(flight_result.content[0].text)
-                            logger.info("✈️ MCP flight data retrieved successfully")
-                    except Exception as e:
-                        logger.warning(f"⚠️ MCP flight tool error: {e}")
+            # Invoke weather tool if available
+            if "get_weather" in tool_names:
+                try:
+                    weather_result = await session.call_tool(
+                        "get_weather",
+                        arguments={"city": destination}
+                    )
+                    if weather_result.content:
+                        enrichment["weather"] = str(weather_result.content[0].text)
+                        logger.info("🌤️ MCP weather data retrieved successfully")
+                except Exception as e:
+                    logger.warning(f"⚠️ MCP weather tool error: {e}")
+                    await self._close_mcp_connection() # Trigger reconnect next time
 
-                # Invoke weather tool if available
-                if "get_weather" in tool_names:
-                    try:
-                        weather_result = await session.call_tool(
-                            "get_weather",
-                            arguments={"city": destination}
-                        )
-                        if weather_result.content:
-                            enrichment["weather"] = str(weather_result.content[0].text)
-                            logger.info("🌤️ MCP weather data retrieved successfully")
-                    except Exception as e:
-                        logger.warning(f"⚠️ MCP weather tool error: {e}")
+        except Exception as e:
+            logger.warning(f"⚠️ General MCP invocation error: {e}")
+            await self._close_mcp_connection()
 
         return enrichment
 
@@ -482,23 +490,65 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
         """Internal helper for _fetch_mcp_tools."""
         lc_tools = []
         try:
-            async with sse_client(self.mcp_url) as streams:
-                    async with ClientSession(streams[0], streams[1]) as session:
-                        await session.initialize()
-                        result = await session.list_tools()
-                        
-                        for tool in result.tools:
-                            async def call_mcp_tool(t_name=tool.name, **kwargs):
-                                return await session.call_tool(t_name, arguments=kwargs)
-                            
-                            lc_tools.append(StructuredTool.from_function(
-                                func=None,
-                                coroutine=call_mcp_tool,
-                                name=tool.name,
-                                description=tool.description or "MCP Tool"
-                            ))
-                        logger.info(f"✅ Successfully loaded {len(lc_tools)} MCP tools")
-                        return lc_tools
+            session, cached_tools = await self._get_mcp_session()
+            
+            for tool in cached_tools:
+                # IMPORTANT: Use default arguments in the lambda/closure to avoid late-binding issues
+                async def call_mcp_tool(t_name=tool.name, **kwargs):
+                    # Grab the current active session dynamically
+                    current_session, _ = await self._get_mcp_session() 
+                    return await current_session.call_tool(t_name, arguments=kwargs)
+                
+                lc_tools.append(StructuredTool.from_function(
+                    func=None,
+                    coroutine=call_mcp_tool,
+                    name=tool.name,
+                    description=tool.description or "MCP Tool"
+                ))
+            logger.info(f"✅ Successfully loaded {len(lc_tools)} MCP tools for LangChain")
+            return lc_tools
         except Exception as e:
             logger.warning(f"⚠️ MCP tools inner error: {e}")
+            await self._close_mcp_connection()
             return []
+        
+    async def _get_mcp_session(self):
+        """Returns an active MCP session and cached tools, reconnecting if necessary."""
+        async with self._mcp_lock:
+            # Return existing session if it's already active
+            if self._mcp_session:
+                return self._mcp_session, self._mcp_tools_cache
+
+            try:
+                logger.info("🔌 Initializing persistent MCP connection...")
+                self._mcp_exit_stack = AsyncExitStack()
+                
+                # Enter and hold the async contexts open
+                streams = await self._mcp_exit_stack.enter_async_context(sse_client(self.mcp_url))
+                self._mcp_session = await self._mcp_exit_stack.enter_async_context(ClientSession(streams[0], streams[1]))
+                
+                await self._mcp_session.initialize()
+                
+                # Cache the tools so we don't have to list them every time
+                tools_result = await self._mcp_session.list_tools()
+                self._mcp_tools_cache = tools_result.tools 
+                
+                logger.info(f"✅ MCP connected. Discovered tools: {[t.name for t in self._mcp_tools_cache]}")
+                return self._mcp_session, self._mcp_tools_cache
+                
+            except Exception as e:
+                logger.error(f"❌ Failed to connect to MCP: {e}")
+                await self._close_mcp_connection()
+                raise e
+
+    async def _close_mcp_connection(self):
+        """Closes the persistent MCP connection safely."""
+        if self._mcp_exit_stack:
+            try:
+                await self._mcp_exit_stack.aclose()
+            except Exception as e:
+                logger.warning(f"⚠️ Error closing MCP connection: {e}")
+                
+        self._mcp_session = None
+        self._mcp_exit_stack = None
+        self._mcp_tools_cache = []
