@@ -147,7 +147,7 @@ class AuthView(QWidget):
         forgot_btn = QPushButton("Forgot Password?")
         forgot_btn.setCursor(Qt.PointingHandCursor)
         forgot_btn.setStyleSheet("color: #3B82F6; border: none; text-align: right; font-size: 12px;")
-        forgot_btn.clicked.connect(lambda: QMessageBox.information(self, "Reset", "Simulated email sent."))
+        forgot_btn.clicked.connect(self.show_forgot_password_dialog)
         
         pl.addWidget(forgot_btn)
         pl.addStretch()
@@ -260,6 +260,56 @@ class AuthView(QWidget):
         self.register_signal.emit(u, p)
 
     # --- PUBLIC METHODS (For Presenter) ---
+
+    def show_forgot_password_dialog(self):
+        """Displays an aesthetically pleasing popup for password recovery."""
+        msg = QMessageBox(self)
+        msg.setWindowTitle("Password Assistance")
+        
+        # Use rich text for styling the main title and body
+        msg.setText("<h2 style='color: #1E293B; margin-bottom: 0px;'>Forgot your password? 🔒</h2>")
+        
+        # Informative text with a clickable mailto link
+        msg.setInformativeText(
+            "<p style='color: #64748B; font-size: 14px; margin-top: 5px;'>"
+            "For security reasons, password resets are handled by our support team.<br><br>"
+            "Please contact us at:<br>"
+            "📧 <b><a href='mailto:smart.travel.agent.app@gmail.com' style='color: #3B82F6; text-decoration: none;'>smart.travel.agent.app@gmail.com</a></b>"
+            "</p>"
+        )
+        
+        # Remove the default system icon to keep it clean
+        msg.setIcon(QMessageBox.NoIcon) 
+        
+        # This allows the user to actually click the email link to open their mail client
+        msg.setTextFormat(Qt.RichText)
+        msg.setTextInteractionFlags(Qt.TextBrowserInteraction)
+        
+        # Style the popup background and the 'OK' button to match your modern UI
+        msg.setStyleSheet("""
+            QMessageBox {
+                background-color: #FFFFFF;
+            }
+            QPushButton {
+                background-color: #3B82F6;
+                color: white;
+                padding: 8px 20px;
+                border-radius: 6px;
+                font-weight: bold;
+                font-size: 13px;
+                border: none;
+                min-width: 80px;
+                margin-top: 10px;
+            }
+            QPushButton:hover {
+                background-color: #2563EB;
+            }
+            QPushButton:pressed {
+                background-color: #1D4ED8;
+            }
+        """)
+        
+        msg.exec()
 
     def show_error(self, message):
         QMessageBox.warning(self, "Error", message)
