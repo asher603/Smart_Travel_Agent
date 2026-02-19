@@ -63,7 +63,14 @@ class AuthPresenter:
             response = self.api.register(username, password)
             
             if response and response.get("status") == "success":
-                self.view.show_success("Account created! Please login.")
+                self.view.show_success("Account created! Please login to continue.")
+                # Automatically switch UI to the Login tab
+                self.view.switch_to_login()
+                # Clear the registration fields
+                self.view.r_user.setText("")
+                self.view.r_pass.setText("")
+                # Pre-fill the Login username to save the user some typing
+                self.view.l_user.setText(username)
             else:
                 msg = response.get("detail") if response else "Unknown error"
                 self.view.show_error(f"Registration Failed: {msg}")
