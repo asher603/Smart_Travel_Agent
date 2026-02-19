@@ -1,10 +1,10 @@
 import random
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
+    QApplication, QDialog, QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
     QPushButton, QFrame, QMessageBox, QStackedWidget, 
     QGraphicsDropShadowEffect
 )
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QTimer, Qt, Signal
 from PySide6.QtGui import QColor
 
 # --- IMPORT CUSTOM COMPONENTS ---
@@ -262,54 +262,224 @@ class AuthView(QWidget):
     # --- PUBLIC METHODS (For Presenter) ---
 
     def show_forgot_password_dialog(self):
-        """Displays an aesthetically pleasing popup for password recovery."""
-        msg = QMessageBox(self)
-        msg.setWindowTitle("Password Assistance")
-        
-        # Use rich text for styling the main title and body
-        msg.setText("<h2 style='color: #1E293B; margin-bottom: 0px;'>Forgot your password? 🔒</h2>")
-        
-        # Informative text with a clickable mailto link
-        msg.setInformativeText(
-            "<p style='color: #64748B; font-size: 14px; margin-top: 5px;'>"
-            "For security reasons, password resets are handled by our support team.<br><br>"
-            "Please contact us at:<br>"
-            "📧 <b><a href='mailto:smart.travel.agent.app@gmail.com' style='color: #3B82F6; text-decoration: none;'>smart.travel.agent.app@gmail.com</a></b>"
-            "</p>"
-        )
-        
-        # Remove the default system icon to keep it clean
-        msg.setIcon(QMessageBox.NoIcon) 
-        
-        # This allows the user to actually click the email link to open their mail client
-        msg.setTextFormat(Qt.RichText)
-        msg.setTextInteractionFlags(Qt.TextBrowserInteraction)
-        
-        # Style the popup background and the 'OK' button to match your modern UI
-        msg.setStyleSheet("""
-            QMessageBox {
-                background-color: #FFFFFF;
+        """Displays a polished, custom password recovery dialog."""
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Password Assistance")
+        dialog.setFixedWidth(420)
+        dialog.setWindowFlags(dialog.windowFlags() & ~Qt.WindowContextHelpButtonHint)
+
+        dialog.setStyleSheet("""
+            QDialog {
+                background-color: #F1F5F9;
             }
-            QPushButton {
+            #card {
+                background-color: #FFFFFF;
+                border-radius: 16px;
+                border: 1px solid #E2E8F0;
+            }
+            #iconCircle {
+                background-color: #EFF6FF;
+                border-radius: 30px;
+                min-width: 60px;
+                max-width: 60px;
+                min-height: 60px;
+                max-height: 60px;
+            }
+            #iconLabel {
+                background-color: transparent;
+                font-size: 28px;
+            }
+            #titleLabel {
+                background-color: transparent;
+                color: #0F172A;
+                font-size: 18px;
+                font-weight: 700;
+            }
+            #subtitleLabel {
+                background-color: transparent;
+                color: #64748B;
+                font-size: 13px;
+            }
+            #divider {
+                background-color: #F1F5F9;
+                max-height: 1px;
+                min-height: 1px;
+            }
+            #emailCard {
+                background-color: #F8FAFC;
+                border: 1px solid #E2E8F0;
+                border-radius: 10px;
+                padding: 4px;
+            }
+            #emailLabel {
+                background-color: transparent;
+                color: #3B82F6;
+                font-size: 13px;
+                font-weight: 600;
+            }
+            #emailHintLabel {
+                background-color: transparent;
+                color: #94A3B8;
+                font-size: 11px;
+            }
+            #envelope {
+                background-color: transparent;
+            }
+            #closeButton {
                 background-color: #3B82F6;
                 color: white;
-                padding: 8px 20px;
-                border-radius: 6px;
-                font-weight: bold;
+                padding: 10px 0px;
+                border-radius: 8px;
+                font-weight: 700;
                 font-size: 13px;
                 border: none;
-                min-width: 80px;
-                margin-top: 10px;
             }
-            QPushButton:hover {
+            #closeButton:hover {
                 background-color: #2563EB;
             }
-            QPushButton:pressed {
+            #closeButton:pressed {
                 background-color: #1D4ED8;
             }
+            #copyButton {
+                background-color: transparent;
+                color: #64748B;
+                padding: 10px 0px;
+                border-radius: 8px;
+                font-size: 13px;
+                border: 1px solid #E2E8F0;
+            }
+            #copyButton:hover {
+                background-color: #F8FAFC;
+                color: #334155;
+            }
+            #copyButton:pressed {
+                background-color: #F1F5F9;
+            }
         """)
-        
-        msg.exec()
+
+        # --- Outer layout (for drop shadow effect via margins) ---
+        outer_layout = QVBoxLayout(dialog)
+        outer_layout.setContentsMargins(12, 12, 12, 12)
+
+        # --- Card widget ---
+        card = QWidget(dialog)
+        card.setObjectName("card")
+        card.setAttribute(Qt.WA_StyledBackground, True)
+
+        # Drop shadow
+        shadow = QGraphicsDropShadowEffect(card)
+        shadow.setBlurRadius(40)
+        shadow.setXOffset(0)
+        shadow.setYOffset(8)
+        shadow.setColor(QColor(0, 0, 0, 35))
+        card.setGraphicsEffect(shadow)
+
+        card_layout = QVBoxLayout(card)
+        card_layout.setContentsMargins(28, 28, 28, 24)
+        card_layout.setSpacing(0)
+
+        # --- Icon circle ---
+        icon_circle = QWidget()
+        icon_circle.setObjectName("iconCircle")
+        icon_circle.setFixedSize(60, 60)
+        icon_circle.setAttribute(Qt.WA_StyledBackground, True)
+        icon_layout = QHBoxLayout(icon_circle)
+        icon_layout.setContentsMargins(0, 0, 0, 0)
+
+        icon_label = QLabel("🔐")
+        icon_label.setObjectName("iconLabel")
+        icon_label.setAlignment(Qt.AlignCenter)
+        icon_layout.addWidget(icon_label)
+
+        card_layout.addWidget(icon_circle, alignment=Qt.AlignLeft)
+        card_layout.addSpacing(16)
+
+        # --- Title ---
+        title = QLabel("Forgot your password?")
+        title.setObjectName("titleLabel")
+        card_layout.addWidget(title)
+        card_layout.addSpacing(6)
+
+        # --- Subtitle ---
+        subtitle = QLabel(
+            "For security reasons, password resets are handled\n"
+            "directly by our support team. Reach out and we'll\n"
+            "get you back in within 24 hours."
+        )
+        subtitle.setObjectName("subtitleLabel")
+        subtitle.setWordWrap(True)
+        card_layout.addWidget(subtitle)
+        card_layout.addSpacing(20)
+
+        # --- Divider ---
+        divider = QWidget()
+        divider.setObjectName("divider")
+        card_layout.addWidget(divider)
+        card_layout.addSpacing(20)
+
+        # --- Email card ---
+        EMAIL = "smart.travel.agent.app@gmail.com"
+        email_card = QWidget()
+        email_card.setObjectName("emailCard")
+        email_card.setAttribute(Qt.WA_StyledBackground, True)
+        email_card_layout = QHBoxLayout(email_card)
+        email_card_layout.setContentsMargins(14, 10, 14, 10)
+        email_card_layout.setSpacing(10)
+
+        envelope = QLabel("✉️")
+        envelope.setObjectName("envelope")
+        envelope.setFixedWidth(24)
+        envelope.setAlignment(Qt.AlignCenter)
+        email_card_layout.addWidget(envelope)
+
+        email_text_layout = QVBoxLayout()
+        email_text_layout.setSpacing(1)
+        email_hint = QLabel("Support email")
+        email_hint.setObjectName("emailHintLabel")
+        email_addr = QLabel(EMAIL)
+        email_addr.setObjectName("emailLabel")
+        email_addr.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        email_text_layout.addWidget(email_hint)
+        email_text_layout.addWidget(email_addr)
+        email_card_layout.addLayout(email_text_layout)
+
+        card_layout.addWidget(email_card)
+        card_layout.addSpacing(20)
+
+        # --- Buttons ---
+        btn_layout = QHBoxLayout()
+        btn_layout.setSpacing(10)
+
+        copy_btn = QPushButton("📋  Copy Email")
+        copy_btn.setObjectName("copyButton")
+        copy_btn.setCursor(Qt.PointingHandCursor)
+
+        close_btn = QPushButton("Got it, thanks!")
+        close_btn.setObjectName("closeButton")
+        close_btn.setCursor(Qt.PointingHandCursor)
+        close_btn.setDefault(True)
+
+        btn_layout.addWidget(copy_btn)
+        btn_layout.addWidget(close_btn)
+        card_layout.addLayout(btn_layout)
+
+        outer_layout.addWidget(card)
+
+        # --- Connections ---
+        close_btn.clicked.connect(dialog.accept)
+
+        def copy_email():
+            QApplication.clipboard().setText(EMAIL)
+            copy_btn.setText("✅  Copied!")
+            copy_btn.setEnabled(False)
+            QTimer.singleShot(2000, lambda: (
+                copy_btn.setText("📋  Copy Email"),
+                copy_btn.setEnabled(True)
+            ))
+
+        copy_btn.clicked.connect(copy_email)
+
+        dialog.exec()
 
     def show_error(self, message):
         QMessageBox.warning(self, "Error", message)

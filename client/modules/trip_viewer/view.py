@@ -1,7 +1,3 @@
-"""
-Trip Viewer View - Premium Travel Experience UI
-Styled to match the Smart Travel Agent design system
-"""
 import base64
 import os
 import re
@@ -16,7 +12,7 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, Signal, QByteArray, QTimer
 from PySide6.QtGui import QPixmap, QColor
 
-# 🛡️ Security
+# Security
 from core.security import validate_and_protect
 
 from .workers import (
@@ -209,7 +205,7 @@ class TripViewerView(QWidget):
         
         # ==================== HEADER ====================
         header = QFrame()
-        header.setFixedHeight(80)
+        header.setFixedHeight(55)
         header.setStyleSheet("""
             QFrame {
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
@@ -224,7 +220,7 @@ class TripViewerView(QWidget):
         # Back button
         btn_back = QPushButton("← Back")
         btn_back.setCursor(Qt.PointingHandCursor)
-        btn_back.setFixedSize(100, 40)
+        btn_back.setFixedSize(100, 32)
         btn_back.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 0.15);
@@ -246,7 +242,7 @@ class TripViewerView(QWidget):
         title.setStyleSheet("""
             QLabel {
                 color: white;
-                font-size: 26px;
+                font-size: 20px;
                 font-weight: 800;
                 background: transparent;
                 border: none;
@@ -258,7 +254,7 @@ class TripViewerView(QWidget):
         # PDF Download button
         self.btn_pdf = QPushButton("📄 Export PDF")
         self.btn_pdf.setCursor(Qt.PointingHandCursor)
-        self.btn_pdf.setFixedSize(130, 40)
+        self.btn_pdf.setFixedSize(130, 32)
         self.btn_pdf.setStyleSheet("""
             QPushButton {
                 background-color: rgba(255, 255, 255, 0.95);
@@ -282,16 +278,19 @@ class TripViewerView(QWidget):
         content_widget = QWidget()
         content_widget.setStyleSheet("background: transparent;")
         content_layout = QHBoxLayout(content_widget)
-        content_layout.setContentsMargins(25, 25, 25, 25)
-        content_layout.setSpacing(25)
+        content_layout.setContentsMargins(15, 15, 15, 15)
+        content_layout.setSpacing(15)
         
         # ---------- LEFT SIDEBAR: Versions ----------
-        sidebar = GlassCard()
-        sidebar.setFixedWidth(260)
-        sidebar_layout = QVBoxLayout(sidebar)
+        self.sidebar = GlassCard()
+        self.sidebar.setFixedWidth(260)
+        sidebar_layout = QVBoxLayout(self.sidebar)
         sidebar_layout.setContentsMargins(20, 24, 20, 20)
         sidebar_layout.setSpacing(16)
-        
+
+        # Sidebar header row: title + collapse button
+        sidebar_header_row = QHBoxLayout()
+
         sidebar_title = QLabel("📅 Trip Versions")
         sidebar_title.setStyleSheet("""
             QLabel {
@@ -302,7 +301,30 @@ class TripViewerView(QWidget):
                 border: none;
             }
         """)
-        sidebar_layout.addWidget(sidebar_title)
+        sidebar_header_row.addWidget(sidebar_title)
+        sidebar_header_row.addStretch()
+
+        self.btn_collapse_sidebar = QPushButton("◀")
+        self.btn_collapse_sidebar.setCursor(Qt.PointingHandCursor)
+        self.btn_collapse_sidebar.setFixedSize(26, 26)
+        self.btn_collapse_sidebar.setToolTip("Collapse sidebar")
+        self.btn_collapse_sidebar.setStyleSheet("""
+            QPushButton {
+                background: rgba(59, 130, 246, 0.12);
+                color: #3B82F6;
+                border: 1px solid rgba(59, 130, 246, 0.3);
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background: rgba(59, 130, 246, 0.25);
+            }
+        """)
+        self.btn_collapse_sidebar.clicked.connect(self.toggle_sidebar)
+        sidebar_header_row.addWidget(self.btn_collapse_sidebar)
+
+        sidebar_layout.addLayout(sidebar_header_row)
         
         self.trip_list = QListWidget()
         self.trip_list.setStyleSheet("""
@@ -330,15 +352,16 @@ class TripViewerView(QWidget):
         """)
         self.trip_list.itemClicked.connect(self.scroll_to_item)
         sidebar_layout.addWidget(self.trip_list)
+        sidebar_layout.addStretch()
         
-        content_layout.addWidget(sidebar)
+        content_layout.addWidget(self.sidebar)
         
         # ---------- RIGHT: Main Feed ----------
         feed_container = QWidget()
         feed_container.setStyleSheet("background: transparent;")
         feed_layout_outer = QVBoxLayout(feed_container)
         feed_layout_outer.setContentsMargins(0, 0, 0, 0)
-        feed_layout_outer.setSpacing(20)
+        feed_layout_outer.setSpacing(8)
         
         # Scroll area
         self.scroll_area = QScrollArea()
@@ -379,10 +402,10 @@ class TripViewerView(QWidget):
         
         # ==================== CHAT INPUT AREA ====================
         chat_container = GlassCard()
-        chat_container.setFixedHeight(130)
+        chat_container.setFixedHeight(102)
         chat_layout = QVBoxLayout(chat_container)
-        chat_layout.setContentsMargins(24, 20, 24, 20)
-        chat_layout.setSpacing(14)
+        chat_layout.setContentsMargins(16, 8, 16, 8)
+        chat_layout.setSpacing(8)
         
         # Mode & Model selectors row
         selectors_row = QHBoxLayout()
@@ -403,7 +426,7 @@ class TripViewerView(QWidget):
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["❓ Question", "🛠️ Fix / New Trip"])
         self.mode_combo.setCursor(Qt.PointingHandCursor)
-        self.mode_combo.setFixedHeight(36)
+        self.mode_combo.setFixedHeight(28)
         self.mode_combo.setStyleSheet("""
             QComboBox {
                 background-color: #FFFFFF;
@@ -469,7 +492,7 @@ class TripViewerView(QWidget):
         self.model_combo.addItems(["Gemini", "Groq", "Ollama"])
         self.model_combo.setToolTip("Select AI Model")
         self.model_combo.setCursor(Qt.PointingHandCursor)
-        self.model_combo.setFixedHeight(36)
+        self.model_combo.setFixedHeight(28)
         self.model_combo.setStyleSheet("""
             QComboBox {
                 background-color: #FFFFFF;
@@ -526,11 +549,16 @@ class TripViewerView(QWidget):
         input_row.setSpacing(12)
         
         self.chat_input = ModernInput("Ask a question or request changes...", icon_char="💬")
+        self.chat_input.setFixedHeight(50)
+        self.chat_input.setStyleSheet(
+            self.chat_input.styleSheet() +
+            "\nQLineEdit { padding-top: 0px; padding-bottom: 0px; }"
+        )
         self.chat_input.returnPressed.connect(self.on_send)
         input_row.addWidget(self.chat_input)
         
         btn_send = ScaleButton("Send →", "#3B82F6", "#8B5CF6")
-        btn_send.setFixedWidth(110)
+        btn_send.setFixedSize(110, 48)
         btn_send.clicked.connect(self.on_send)
         input_row.addWidget(btn_send)
         
@@ -566,6 +594,29 @@ class TripViewerView(QWidget):
         if not self.is_loading_mode:
             self.save_state_to_server()
         self.back_signal.emit()
+
+    def toggle_sidebar(self):
+        """Collapse or expand the left sidebar"""
+        layout = self.sidebar.layout()
+        if self.sidebar.maximumWidth() > 50:
+            # Collapse — hide everything except the button, pin it top-left
+            self.trip_list.hide()
+            # Hide the title label (first widget in the header row)
+            for child in self.sidebar.findChildren(QLabel):
+                child.hide()
+            self.sidebar.setFixedWidth(38)
+            layout.setContentsMargins(6, 8, 6, 8)
+            self.btn_collapse_sidebar.setText("▶")
+            self.btn_collapse_sidebar.setToolTip("Expand sidebar")
+        else:
+            # Expand — restore everything
+            self.sidebar.setFixedWidth(260)
+            layout.setContentsMargins(20, 24, 20, 20)
+            for child in self.sidebar.findChildren(QLabel):
+                child.show()
+            self.trip_list.show()
+            self.btn_collapse_sidebar.setText("◀")
+            self.btn_collapse_sidebar.setToolTip("Collapse sidebar")
 
     # ============================================================================
     #                           UI RESET & CLEANUP
