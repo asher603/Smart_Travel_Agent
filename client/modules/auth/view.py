@@ -161,6 +161,10 @@ class AuthView(QWidget):
         self.r_pass = ModernInput("Choose Password", is_password=True, icon_char="🔒")
         self.r_pass.returnPressed.connect(self.emit_register)
 
+        # password hint label
+        self.password_hint = QLabel("🔒 Password must be at least 8 characters with letters & numbers.")
+        self.password_hint.setStyleSheet("color: #888888; font-size: 11px; margin-top: -2px; margin-bottom: 5px;")
+
         self.btn_reg_action = ScaleButton("Create Account", "#10B981", "#059669")
         self.btn_reg_action.clicked.connect(self.emit_register)
 
@@ -168,8 +172,11 @@ class AuthView(QWidget):
         pr.addWidget(self.r_user)
         pr.addWidget(QLabel("New Password", styleSheet="color: #475569; font-weight: bold; font-size: 12px; border:none;"))
         pr.addWidget(self.r_pass)
+        pr.addWidget(self.password_hint)
         pr.addStretch()
         pr.addWidget(self.btn_reg_action)
+
+        self.r_pass.input_field.textChanged.connect(self.update_password_hint)
 
         self.stack.addWidget(page_login)
         self.stack.addWidget(page_reg)
@@ -190,6 +197,23 @@ class AuthView(QWidget):
 
         # Init State
         self.switch_to_login()
+
+    def update_password_hint(self, text):
+        """Provides real-time visual feedback on password strength."""
+        has_min_length = len(text) >= 8
+        has_letter = any(c.isalpha() for c in text)
+        has_digit = any(c.isdigit() for c in text)
+        is_valid = has_min_length and has_letter and has_digit
+        
+        if not text:
+            self.password_hint.setStyleSheet("color: #888888; font-size: 11px;")
+            self.password_hint.setText("🔒 Password must be at least 8 characters with letters & numbers.")
+        elif is_valid:
+            self.password_hint.setStyleSheet("color: #10B981; font-size: 11px;") # Green text
+            self.password_hint.setText("✅ Strong password")
+        else:
+            self.password_hint.setStyleSheet("color: #EF4444; font-size: 11px;") # Red text
+            self.password_hint.setText("❌ Requires 8+ chars, letters, and numbers.")
 
     # --- UI LOGIC ---
 

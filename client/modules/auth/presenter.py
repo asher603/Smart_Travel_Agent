@@ -46,8 +46,17 @@ class AuthPresenter:
     def handle_register(self, username, password):
         print(f"📝 Presenter: Register requested for {username}")
         
-        # 🛡️ SECURITY CHECK
+        # SECURITY CHECK (Prompt Injection Prevention)
         if not validate_and_protect(username=username, password=password):
+            return
+            
+        # PASSWORD COMPLEXITY CHECK
+        has_min_length = len(password) >= 8
+        has_letter = any(c.isalpha() for c in password)
+        has_digit = any(c.isdigit() for c in password)
+        
+        if not (has_min_length and has_letter and has_digit):
+            self.view.show_error("Password must be at least 8 characters and include both letters and numbers.")
             return
         
         try:
