@@ -14,6 +14,13 @@ async def proxy_request(service_url: str, path: str, request: Request):
     
     print(f"🔄 Proxying request to: {url}")
 
+    # Strip problematic headers (like 'host', 'content-length')
+    filtered_headers = {
+        k.decode("utf-8"): v.decode("utf-8") 
+        for k, v in request.headers.raw 
+        if k.decode("utf-8").lower() not in ("host", "content-length")
+    }
+
     try:
         body = await request.body()
         
@@ -21,7 +28,7 @@ async def proxy_request(service_url: str, path: str, request: Request):
         resp = await client.request(
             method=request.method,
             url=url,
-            headers=request.headers.raw,
+            headers=filtered_headers,
             content=body,
             timeout=300.0 
         )
