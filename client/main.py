@@ -1,5 +1,7 @@
 import sys
 import os
+import ctypes
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 # Core Services
 from core.api import APIService
@@ -30,8 +32,21 @@ def load_stylesheet(app, path):
         print(f"Warning: Stylesheet not found at {path}")
 
 def main():
+    # --- Windows Taskbar Icon Fix ---
+    # Tells Windows this app is unique, preventing it from grouping under the default Python icon
+    try:
+        myappid = 'mycompany.smarttravelagent.client.1.0'
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(myappid)
+    except Exception:
+        pass  # Fails silently if not on Windows
+
     app = QApplication(sys.argv)
     
+    # 1. Load Icon
+    icon_path = os.path.join(current_dir, "assets", "icon.png")
+    app_icon = QIcon(icon_path)
+    app.setWindowIcon(app_icon)
+
     # 2. Load Styles
     style_path = os.path.join(current_dir, "assets", "styles.qss")
     load_stylesheet(app, style_path)
