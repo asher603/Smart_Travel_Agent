@@ -183,7 +183,7 @@ def show_security_alert_and_exit(field_name: str, patterns: List[str] = None):
 
 <p>Your attempt to manipulate the AI system has been <b>blocked and logged</b>.</p>
 
-<p style="color: #DC2626;">⚠️ The application will now terminate for security reasons.</p>
+<p style="color: #DC2626;">⚠️ We take strong action against malicious exploitation attempts and will not allow them..</p>
 
 {pattern_info}
 
@@ -213,9 +213,9 @@ This incident may be reported.
     msg.exec()
     
     # Terminate application
-    print(f"🚨 SECURITY: Application terminated due to injection attempt in '{field_name}'")
-    QApplication.quit()
-    sys.exit(1)
+    print(f"🚨 SECURITY: Application blocked injection attempt in '{field_name}'")
+    #QApplication.quit()
+    #sys.exit(1)
 
 
 # Global instance
