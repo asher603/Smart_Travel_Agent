@@ -94,20 +94,18 @@ class DateRangeCalendar(QFrame):
         title_frame = QFrame()
         title_frame.setStyleSheet("""
             QFrame {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
-                    stop:0 #3B82F6, stop:1 #2563EB);
+                background: transparent;
                 border-radius: 12px;
-                padding: 0px;
             }
         """)
         title_layout = QHBoxLayout(title_frame)
-        title_layout.setContentsMargins(16, 12, 16, 12)
+        title_layout.setContentsMargins(0, 0, 0, 0)
         
         title = QLabel("📅  Select Travel Dates")
         title.setStyleSheet("""
             QLabel {
-                color: white;
-                font-size: 16px;
+                color: #1E293B;
+                font-size: 17px;
                 font-weight: 700;
                 background: transparent;
             }
@@ -284,12 +282,12 @@ class DateRangeCalendar(QFrame):
         self.duration_label.setAlignment(Qt.AlignCenter)
         self.duration_label.setStyleSheet("""
             QLabel {
-                color: white;
+                color: #475569;
                 font-size: 13px;
                 font-weight: 600;
-                padding: 12px 16px;
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
-                    stop:0 #3B82F6, stop:1 #2563EB);
+                padding: 10px 16px;
+                background: #F1F5F9;
+                border: 1.5px solid #E2E8F0;
                 border-radius: 10px;
             }
         """)
@@ -573,8 +571,8 @@ class TripFormView(QWidget):
         # Location Card
         loc_card = self._card()
         loc_layout = QVBoxLayout(loc_card)
-        loc_layout.setContentsMargins(28, 24, 28, 28)
-        loc_layout.setSpacing(20)
+        loc_layout.setContentsMargins(28, 16, 28, 16)
+        loc_layout.setSpacing(6)
         
         loc_title = QLabel("📍 Location")
         loc_title.setStyleSheet("color: #1E293B; font-size: 17px; font-weight: 700;")
@@ -589,7 +587,7 @@ class TripFormView(QWidget):
         
         # Origin
         origin_lbl = QLabel("From")
-        origin_lbl.setStyleSheet("color: #64748B; font-size: 12px; font-weight: 600; margin-top: 8px;")
+        origin_lbl.setStyleSheet("color: #64748B; font-size: 12px; font-weight: 600;")
         loc_layout.addWidget(origin_lbl)
         self.input_origin = ModernInput("Your departure city", icon_char="🏠")
         loc_layout.addWidget(self.input_origin)
@@ -609,43 +607,34 @@ class TripFormView(QWidget):
         budget_row = QHBoxLayout()
         budget_row.setSpacing(12)
         
-        self.input_budget = ModernInput("Amount", icon_char="")
+        #self.input_budget = ModernInput("Amount", icon_char="")
+        self.input_budget = ModernInput("", icon_char="")
         budget_row.addWidget(self.input_budget, 2)
         
         self.combo_currency = self._combo(["USD", "EUR", "ILS", "GBP", "JPY"])
         self.combo_currency.setFixedWidth(100)
-        budget_row.addWidget(self.combo_currency)
+        budget_row.addWidget(self.combo_currency, 1)
         
         budget_layout.addLayout(budget_row)
         left_col.addWidget(budget_card)
         
-        # Traveler Card (Gender + AI Model)
+        # Traveler Card (Gender)
         traveler_card = self._card()
         traveler_layout = QVBoxLayout(traveler_card)
         traveler_layout.setContentsMargins(28, 20, 28, 20)
         traveler_layout.setSpacing(14)
 
-        # Gender row
-        gender_row = QHBoxLayout()
-        gender_lbl = QLabel("👤 Traveler")
+        # Gender label
+        gender_lbl = QLabel("👤 Travelers Gender")
         gender_lbl.setStyleSheet("color: #1E293B; font-size: 15px; font-weight: 700;")
-        gender_row.addWidget(gender_lbl)
-        gender_row.addStretch()
-        self.combo_gender = self._combo(["Male", "Female"])
-        self.combo_gender.setFixedWidth(120)
-        gender_row.addWidget(self.combo_gender)
-        traveler_layout.addLayout(gender_row)
+        traveler_layout.addWidget(gender_lbl)
 
-        # AI Model row
-        model_row = QHBoxLayout()
-        model_title = QLabel("🤖 AI Model")
-        model_title.setStyleSheet("color: #1E293B; font-size: 15px; font-weight: 700;")
-        model_row.addWidget(model_title)
-        model_row.addStretch()
-        self.combo_model = self._combo(["Gemini", "Groq", "Ollama"])
-        self.combo_model.setFixedWidth(120)
-        model_row.addWidget(self.combo_model)
-        traveler_layout.addLayout(model_row)
+        # Gender combo
+        gender_row = QHBoxLayout()
+        self.combo_gender = self._combo(["Male", "Female", "Both"])
+        gender_row.addWidget(self.combo_gender)
+        gender_row.addStretch()
+        traveler_layout.addLayout(gender_row)
 
         left_col.addWidget(traveler_card)
         left_col.addStretch()
@@ -744,7 +733,15 @@ class TripFormView(QWidget):
         
         right_col.addWidget(interests_card)
         
-        # Generate Button
+        # Generate Button row - AI model combo + button side by side
+        generate_row = QHBoxLayout()
+        generate_row.setSpacing(10)
+
+        self.combo_model = self._combo(["Gemini", "Groq", "Ollama"])
+        self.combo_model.setFixedWidth(110)
+        self.combo_model.setFixedHeight(52)
+        generate_row.addWidget(self.combo_model)
+
         self.btn_generate = QPushButton("Generate Trip  →")
         self.btn_generate.setCursor(Qt.PointingHandCursor)
         self.btn_generate.setFixedHeight(52)
@@ -768,14 +765,15 @@ class TripFormView(QWidget):
             }
         """)
         self.btn_generate.clicked.connect(self.on_generate_click)
-        
+
         btn_shadow = QGraphicsDropShadowEffect()
         btn_shadow.setBlurRadius(20)
         btn_shadow.setColor(QColor(59, 130, 246, 80))
         btn_shadow.setOffset(0, 6)
         self.btn_generate.setGraphicsEffect(btn_shadow)
-        
-        right_col.addWidget(self.btn_generate)
+
+        generate_row.addWidget(self.btn_generate)
+        right_col.addLayout(generate_row)
         right_col.addStretch()
         
         content_layout.addLayout(right_col, 1)
