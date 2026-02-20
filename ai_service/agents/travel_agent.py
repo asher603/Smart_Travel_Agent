@@ -211,7 +211,7 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
              Budget: {budget} {currency}.
              Interests: {interest}.
              Vibe: {vibe}.
-             Traveler gender: {gender}.
+             Travelers gender: {gender}.
              {enrichment}
              
              IMPORTANT: Return ONLY valid JSON. No markdown formatting, no explanations.
@@ -249,7 +249,7 @@ You are an expert travel agent. Create a detailed itinerary. OUTPUT MUST BE RAW 
              PACKING LIST RULES:
              - Create a practical packing list with 5-7 categories (e.g. Clothing, Toiletries, Electronics, Documents, Accessories, Health, Gear).
              - Each category should have 3-6 specific items.
-             - Items MUST be tailored to: destination weather, trip duration, traveler interests, AND traveler gender ({gender}).
+             - Items MUST be tailored to: destination weather, trip duration, traveler interests, AND travelers gender ({gender}).
              - For gender-specific items, recommend appropriate clothing and toiletries.
              - If activities like hiking, beach, or sports are planned, include relevant gear.
              - Include travel documents and essentials.
